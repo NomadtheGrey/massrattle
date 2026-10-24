@@ -71,6 +71,18 @@ const botItemOrder = (ownerId: string): string[] => {
   return [...ids.slice(rot), ...ids.slice(0, rot)];
 };
 
+/** The seat's track shopping order — the base order rotated by
+ *  the seat's hash, so each bot favors its own track first and
+ *  may max it before touching what it needs most (Adam's latitude,
+ *  2026-10-24: bots may make mistakes in judgment, whatever).
+ *  No optimizer, no regret logic — the walk buys first-affordable
+ *  in this order, mistakes included. */
+const botTrackOrder = (ownerId: string): UpgradeTrack[] => {
+  const base: UpgradeTrack[] = ['fuel', 'cargo', 'attractor', 'thrust', 'handling'];
+  const rot = seatHash(ownerId) % base.length;
+  return [...base.slice(rot), ...base.slice(0, rot)];
+};
+
 interface BotGoal {
   price: number;
   apply: (seat: SeatSimState, ctx: SeatShopCtx) => SeatShopChange | null;
@@ -101,11 +113,13 @@ export const botGoals = (seat: SeatSimState, ctx: SeatShopCtx): BotGoal[] => {
   if (fielded < typeFor(ship.line, ship.typeTier).dronesFielded) {
     goals.push({ price: DRONE_PRICE, apply: (s, c) => seatBuildDrone(s, c) });
   }
-  // Upgrade tracks, harvest help first: fuel (longer sorties),
-  // cargo (bigger hauls), vacuum (wider reach), thrust, handling.
+  // Upgrade tracks, in the seat's own favorite order (rotated by
+  // its hash, like the arsenal order): a bot favors its first
+  // track and may max it before touching what it needs most —
+  // that imperfection is the design, not a bug to optimize away.
   // Same prices, caps, and wallet as players (seatBuyTrack); the
   // driver honors every track, so no goal buys a no-op.
-  const trackOrder: UpgradeTrack[] = ['fuel', 'cargo', 'attractor', 'thrust', 'handling'];
+  const trackOrder = botTrackOrder(seat.ownerId);
   const trackCaps = capsFor(ship.line, ship.typeTier);
   for (const t of trackOrder) {
     const levelKey = t === 'fuel' ? 'fuelCap' : t;
