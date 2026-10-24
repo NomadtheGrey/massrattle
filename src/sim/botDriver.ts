@@ -53,8 +53,11 @@ import type {
 
 /** Bot driver tuning — DRAFT numbers, one block, Adam's pin pending. */
 export const BOT_DRIVER = {
-  /** Top speed (units/frame). The player cap is PHYSICS.MAX_VELOCITY
-   * (5) + thrust upgrades; a starter bot cruises a little under it. */
+  /** Top speed (units/frame) for ESCORTS (escorts.ts caps to this).
+   *  Bot SHIPS cap by rung (BOT_DIFFICULTY.maxSpeed) instead; the
+   *  IMPOSSIBLE rung (4.2) is today's bot-ship cap, preserved.
+   *  (The old comment claiming a player cap of 5 was stale —
+   *  PHYSICS.MAX_VELOCITY is 7.5 + 0.5/thrust.) */
   MAX_SPEED: 4.2,
   /** Acceleration along the ship's facing (units/frame^2). */
   ACCEL: 0.22,
@@ -70,6 +73,12 @@ export const BOT_DRIVER = {
   /** Weapon range: the driver only opens fire inside this distance.
    *  IMPOSSIBLE baseline — stepBotShip scales by world.difficulty. */
   FIRE_RANGE: 520,
+  /** Facing gate (hot fix 2026-10-24, DRAFT): a bot only opens
+   *  fire when its nose points at (near) the target — bolts fly
+   *  along facing like the player's do. Matches the PINNED
+   *  turret arc ±45°. Applies to every rung: it is a facing
+   *  rule, not a difficulty number. */
+  FIRE_ARC: Math.PI / 4,
   /** OFFENSE (Arsenal slice 5a, 2026-10-21): a targetable hostile
    *  ship inside this distance becomes the bot's objective — it
    *  pursues instead of harvesting. DRAFT. IMPOSSIBLE baseline —
@@ -174,6 +183,22 @@ const angleLerp = (from: number, to: number, maxStep: number): number => {
   return from + Math.sign(diff) * Math.min(Math.abs(diff), maxStep);
 };
 
+/** FACING GATE (hot fix 2026-10-24): true when the ship's nose
+ *  points at (near) the target — the fire rule players live by.
+ *  Bot bolts fly along aim, so without this a bot shoots
+ *  sideways and backwards. */
+const botFacingTarget = (
+  angle: number,
+  target: { x: number; y: number },
+  pos: { x: number; y: number },
+): boolean => {
+  const aim = Math.atan2(target.y - pos.y, target.x - pos.x);
+  let d = aim - angle;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return Math.abs(d) <= BOT_DRIVER.FIRE_ARC;
+};
+
 /** Deterministic per-seat hash — a pilot's identity, stable
  *  across frames, migrations, and drop-ins. */
 const seatHash = (ownerId: string): number => {
@@ -240,10 +265,10 @@ export const stepBotShip = (
   if (!ship || seat.eliminated) return EMPTY_RESULT;
   const ownStar = world.stars.find(s => s.ownerId === seat.ownerId);
   if (!ownStar) return EMPTY_RESULT;
-  // BOT DIFFICULTY LADDER: the rung's aim error, fire range, and
-  // aggro range replace the raw BOT_DRIVER constants below. The
-  // IMPOSSIBLE row equals those constants exactly, so absent =
-  // today's behavior, byte for byte.
+  // BOT DIFFICULTY LADDER: the rung's aim error, fire range,
+  // aggro range, and top speed replace the raw BOT_DRIVER
+  // constants below. The IMPOSSIBLE row equals those constants
+  // exactly, so absent = today's behavior, byte for byte.
   const diff = BOT_DIFFICULTY[world.difficulty ?? 'impossible'];
 
   // REPAIR DISPOSITION (B1): the pilot's health-graded choice
@@ -539,7 +564,7 @@ export const stepBotShip = (
   // band the bot flies a slow final, so arrival momentum cannot
   // carry it past the stand-off into the burn (see the siege
   // destination note above).
-  let speedCap = BOT_DRIVER.MAX_SPEED;
+  let speedCap = diff.maxSpeed;
   if (objective === 'siege' && siegeStar) {
     const surfD =
       Math.hypot(ship.pos.x - siegeStar.pos.x, ship.pos.y - siegeStar.pos.y) -
@@ -631,7 +656,10 @@ export const stepBotShip = (
       );
       if (dd < diff.fireRange) fireTarget = siegeStar.pos;
     }
-    if (fireTarget) {
+    // FACING GATE: a bot fires only when its nose points at
+    // (near) the target — no cooldown is spent while it holds
+    // fire, so it shoots the moment it lines up.
+    if (fireTarget && botFacingTarget(ship.angle, fireTarget, ship.pos)) {
       const aim = Math.atan2(
         fireTarget.y - ship.pos.y,
         fireTarget.x - ship.pos.x,

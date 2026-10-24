@@ -7,10 +7,12 @@
  * aim from beyond the visible field, thirty seconds into a solo
  * match. The driver's old constants ARE the top rung, preserved
  * untouched — IMPOSSIBLE is today's bot, exactly. Lower rungs soften
- * the three combat levers that made it feel unfair: aim error (each
+ * the four levers that made it feel unfair: aim error (each
  * bolt veers by up to this many radians), fire range (the driver only
- * opens fire inside it), and aggro range (how far away a hostile
- * becomes something worth hunting). Everything else — defend ranges,
+ * opens fire inside it), aggro range (how far away a hostile
+ * becomes something worth hunting), and top speed (the hot fix,
+ * 2026-10-24: bots held max speed forever with no fuel, so lower
+ * rungs cruise slower). Everything else — defend ranges,
  * siege standoff, repair disposition, economy cadence, escort fire —
  * stays at today's values on every rung for v1; those are follow-up
  * dials, not silent passengers.
@@ -26,15 +28,18 @@ export interface BotDifficultyParams {
   fireRange: number;
   /** A hostile ship inside this distance becomes a hunt objective. */
   aggroRange: number;
+  /** Top speed, units/frame — the bot ship's own cap. */
+  maxSpeed: number;
 }
 
 export const BOT_DIFFICULTY: Record<BotDifficulty, BotDifficultyParams> = {
-  rookie: { aimErrorRad: 0.1, fireRange: 360, aggroRange: 550 },
-  seasoned: { aimErrorRad: 0.045, fireRange: 450, aggroRange: 750 },
-  veteran: { aimErrorRad: 0.015, fireRange: 520, aggroRange: 1000 },
-  // IMPOSSIBLE is today's bot, exactly: BOT_DRIVER.FIRE_RANGE (520)
-  // and BOT_DRIVER.AGGRO_RANGE (1000), zero aim error.
-  impossible: { aimErrorRad: 0, fireRange: 520, aggroRange: 1000 },
+  rookie: { aimErrorRad: 0.1, fireRange: 360, aggroRange: 550, maxSpeed: 3.0 },
+  seasoned: { aimErrorRad: 0.045, fireRange: 450, aggroRange: 750, maxSpeed: 3.6 },
+  veteran: { aimErrorRad: 0.015, fireRange: 520, aggroRange: 1000, maxSpeed: 4.2 },
+  // IMPOSSIBLE is today's bot, exactly: BOT_DRIVER.FIRE_RANGE (520),
+  // BOT_DRIVER.AGGRO_RANGE (1000), BOT_DRIVER.MAX_SPEED (4.2),
+  // zero aim error.
+  impossible: { aimErrorRad: 0, fireRange: 520, aggroRange: 1000, maxSpeed: 4.2 },
 };
 
 export const BOT_DIFFICULTY_ORDER: BotDifficulty[] = [
