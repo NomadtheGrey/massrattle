@@ -115,18 +115,24 @@ const pay = (seat: SeatSimState, cost: number, inWell: boolean): boolean => {
 
 export type UpgradeTrack = 'thrust' | 'handling' | 'attractor' | 'fuel' | 'cargo';
 
-export const seatBuyTrack = (seat: SeatSimState, ctx: SeatShopCtx, type: UpgradeTrack): SeatShopChange | null => {
-  const ship = seat.ship;
-  if (!ship || !inTeamWell(ctx.seats, ship)) return null;
+/** Track price, one truth for the shop verb and the bot goal list:
+ *  base + level x half the base (rounded down), same as players pay. */
+export const trackPriceFor = (type: UpgradeTrack, level: number): number => {
   const baseCost = type === 'thrust' ? PHYSICS.UPGRADE_COSTS.THRUST :
     type === 'handling' ? PHYSICS.UPGRADE_COSTS.HANDLING :
     type === 'attractor' ? PHYSICS.UPGRADE_COSTS.ATTRACTOR :
     type === 'fuel' ? PHYSICS.UPGRADE_COSTS.FUEL :
     PHYSICS.UPGRADE_COSTS.CARGO;
+  return baseCost + level * Math.floor(baseCost * 0.5);
+};
+
+export const seatBuyTrack = (seat: SeatSimState, ctx: SeatShopCtx, type: UpgradeTrack): SeatShopChange | null => {
+  const ship = seat.ship;
+  if (!ship || !inTeamWell(ctx.seats, ship)) return null;
   const currentLevel = type === 'fuel' ? ship.upgrades.fuelCap : (ship.upgrades as unknown as Record<string, number>)[type];
   const capKey = type === 'attractor' ? 'vac' : type === 'fuel' ? 'fuel' : type;
   if (currentLevel >= capsFor(ship.line, ship.typeTier)[capKey]) return null;
-  const cost = baseCost + currentLevel * Math.floor(baseCost * 0.5);
+  const cost = trackPriceFor(type, currentLevel);
   if (!pay(seat, cost, true)) return null;
   const s = seat.ship!;
   const upgradeKey = type === 'fuel' ? 'fuelCap' : type;

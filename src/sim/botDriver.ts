@@ -53,8 +53,11 @@ import type {
 
 /** Bot driver tuning — DRAFT numbers, one block, Adam's pin pending. */
 export const BOT_DRIVER = {
-  /** Top speed (units/frame). The player cap is PHYSICS.MAX_VELOCITY
-   * (5) + thrust upgrades; a starter bot cruises a little under it. */
+  /** Top speed (units/frame) for ESCORTS (escorts.ts caps to this).
+   *  Bot SHIPS cap by rung (BOT_DIFFICULTY.maxSpeed) instead; the
+   *  IMPOSSIBLE rung (4.2) is today's bot-ship cap, preserved.
+   *  (The old comment claiming a player cap of 5 was stale —
+   *  PHYSICS.MAX_VELOCITY is 7.5 + 0.5/thrust.) */
   MAX_SPEED: 4.2,
   /** Acceleration along the ship's facing (units/frame^2). */
   ACCEL: 0.22,
@@ -70,6 +73,12 @@ export const BOT_DRIVER = {
   /** Weapon range: the driver only opens fire inside this distance.
    *  IMPOSSIBLE baseline — stepBotShip scales by world.difficulty. */
   FIRE_RANGE: 520,
+  /** Facing gate (hot fix 2026-10-24, DRAFT): a bot only opens
+   *  fire when its nose points at (near) the target — bolts fly
+   *  along facing like the player's do. Matches the PINNED
+   *  turret arc ±45°. Applies to every rung: it is a facing
+   *  rule, not a difficulty number. */
+  FIRE_ARC: Math.PI / 4,
   /** OFFENSE (Arsenal slice 5a, 2026-10-21): a targetable hostile
    *  ship inside this distance becomes the bot's objective — it
    *  pursues instead of harvesting. DRAFT. IMPOSSIBLE baseline —
@@ -174,6 +183,22 @@ const angleLerp = (from: number, to: number, maxStep: number): number => {
   return from + Math.sign(diff) * Math.min(Math.abs(diff), maxStep);
 };
 
+/** FACING GATE (hot fix 2026-10-24): true when the ship's nose
+ *  points at (near) the target — the fire rule players live by.
+ *  Bot bolts fly along aim, so without this a bot shoots
+ *  sideways and backwards. */
+const botFacingTarget = (
+  angle: number,
+  target: { x: number; y: number },
+  pos: { x: number; y: number },
+): boolean => {
+  const aim = Math.atan2(target.y - pos.y, target.x - pos.x);
+  let d = aim - angle;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return Math.abs(d) <= BOT_DRIVER.FIRE_ARC;
+};
+
 /** Deterministic per-seat hash — a pilot's identity, stable
  *  across frames, migrations, and drop-ins. */
 const seatHash = (ownerId: string): number => {
@@ -240,11 +265,15 @@ export const stepBotShip = (
   if (!ship || seat.eliminated) return EMPTY_RESULT;
   const ownStar = world.stars.find(s => s.ownerId === seat.ownerId);
   if (!ownStar) return EMPTY_RESULT;
-  // BOT DIFFICULTY LADDER: the rung's aim error, fire range, and
-  // aggro range replace the raw BOT_DRIVER constants below. The
-  // IMPOSSIBLE row equals those constants exactly, so absent =
-  // today's behavior, byte for byte.
+  // BOT DIFFICULTY LADDER: the rung's aim error, fire range,
+  // aggro range, and top speed replace the raw BOT_DRIVER
+  // constants below. The IMPOSSIBLE row equals those constants
+  // exactly, so absent = today's behavior, byte for byte.
   const diff = BOT_DIFFICULTY[world.difficulty ?? 'impossible'];
+
+  // The ship's tank (starter 100), declared here because the
+  // steer block below burns it before the refuel block fills it.
+  const maxFuel = ship.maxFuel ?? 100;
 
   // REPAIR DISPOSITION (B1): the pilot's health-graded choice
   // to heal, written before anything reads the toggle — the
@@ -507,11 +536,31 @@ export const stepBotShip = (
   }
 
   // --- Steer + integrate ------------------------------------------
+  // FUEL: thrust burns the tank at the player's rate, and a dry
+  // tank coasts — no accel, friction only. When not thrusting
+  // the tank regens at the player's rate, so a dry bot limps
+  // home instead of stranding. (Cargo-to-fuel auto-convert is
+  // NOT mirrored: it stretches a sortie, it is not a limitation.)
+  // TRACKS (same-limitations ruling): thrust adds the player's
+  // +0.08/track step to the bot's base accel, handling adds the
+  // player's +0.005/track turn step and -0.01/track friction step
+  // (floor 0.90), vacuum adds the 35/track vac bonus to the
+  // collect radius — bot bases preserved, so a bought track is
+  // never a no-op. Cargo and fuel were already live (capacity
+  // formula, maxFuel) before this landing.
+  let thrusting = false;
   if (target) {
     const want = Math.atan2(target.y - ship.pos.y, target.x - ship.pos.x);
-    ship.angle = angleLerp(ship.angle, want, BOT_DRIVER.TURN_RATE * dtFrames);
-    ship.vel.x += Math.cos(ship.angle) * BOT_DRIVER.ACCEL * dtFrames;
-    ship.vel.y += Math.sin(ship.angle) * BOT_DRIVER.ACCEL * dtFrames;
+    ship.angle = angleLerp(ship.angle, want, (BOT_DRIVER.TURN_RATE + ship.upgrades.handling * 0.005) * dtFrames);
+    if ((ship.fuel ?? maxFuel) > PHYSICS.FUEL_CONSUMPTION) {
+      ship.fuel = (ship.fuel ?? maxFuel) - PHYSICS.FUEL_CONSUMPTION;
+      ship.vel.x += Math.cos(ship.angle) * (BOT_DRIVER.ACCEL + ship.upgrades.thrust * 0.08) * dtFrames;
+      ship.vel.y += Math.sin(ship.angle) * (BOT_DRIVER.ACCEL + ship.upgrades.thrust * 0.08) * dtFrames;
+      thrusting = true;
+    }
+  }
+  if (!thrusting) {
+    ship.fuel = Math.min((ship.fuel ?? maxFuel) + PHYSICS.FUEL_REGEN, maxFuel);
   }
   // Hostile-star avoidance: a soft push out of the burn approach,
   // plus a hard keep-out so the driver never parks inside a star.
@@ -533,13 +582,13 @@ export const stepBotShip = (
       ship.pos.y = s.pos.y + (dy / dist) * keepOut;
     }
   }
-  ship.vel.x *= BOT_DRIVER.FRICTION;
-  ship.vel.y *= BOT_DRIVER.FRICTION;
+  ship.vel.x *= Math.max(BOT_DRIVER.FRICTION - ship.upgrades.handling * 0.01, PHYSICS.FRICTION_MAX);
+  ship.vel.y *= Math.max(BOT_DRIVER.FRICTION - ship.upgrades.handling * 0.01, PHYSICS.FRICTION_MAX);
   // Siege approach discipline: inside the stand-off's approach
   // band the bot flies a slow final, so arrival momentum cannot
   // carry it past the stand-off into the burn (see the siege
   // destination note above).
-  let speedCap = BOT_DRIVER.MAX_SPEED;
+  let speedCap = diff.maxSpeed;
   if (objective === 'siege' && siegeStar) {
     const surfD =
       Math.hypot(ship.pos.x - siegeStar.pos.x, ship.pos.y - siegeStar.pos.y) -
@@ -554,7 +603,7 @@ export const stepBotShip = (
   }
   ship.pos.x += ship.vel.x * dtFrames;
   ship.pos.y += ship.vel.y * dtFrames;
-  ship.thrust = speed > 0.4;
+  ship.thrust = thrusting;
 
   // --- Collect / deliver on contact --------------------------------
   if (targetScrap && !returning) {
@@ -562,7 +611,9 @@ export const stepBotShip = (
       targetScrap.pos.x - ship.pos.x,
       targetScrap.pos.y - ship.pos.y,
     );
-    if (dd < BOT_DRIVER.COLLECT_RADIUS && ship.carrying < capacity) {
+    // VACUUM: the 35/track vac bonus (attractRadiusForShip's step)
+    // widens the touch radius — the driver's mirror of vac pull.
+    if (dd < BOT_DRIVER.COLLECT_RADIUS + ship.upgrades.attractor * 35 && ship.carrying < capacity) {
       ship.carrying += 1;
       result.collectedScrapIds.push(targetScrap.id);
     }
@@ -573,6 +624,16 @@ export const stepBotShip = (
       result.deliverAmount = ship.carrying;
       ship.carrying = 0;
     }
+  }
+
+  // BOT FUEL (Adam's ruling 2026-10-24: bots live by the same
+  // limitations as players): home is the refill — inside the
+  // delivery radius the tank fills at once.
+  if (
+    Math.hypot(ship.pos.x - ownStar.pos.x, ship.pos.y - ownStar.pos.y) <
+    ownStar.size + BOT_DRIVER.DEPOSIT_RADIUS
+  ) {
+    ship.fuel = maxFuel;
   }
 
   // --- Fire the equipped starter weapon ----------------------------
@@ -631,7 +692,10 @@ export const stepBotShip = (
       );
       if (dd < diff.fireRange) fireTarget = siegeStar.pos;
     }
-    if (fireTarget) {
+    // FACING GATE: a bot fires only when its nose points at
+    // (near) the target — no cooldown is spent while it holds
+    // fire, so it shoots the moment it lines up.
+    if (fireTarget && botFacingTarget(ship.angle, fireTarget, ship.pos)) {
       const aim = Math.atan2(
         fireTarget.y - ship.pos.y,
         fireTarget.x - ship.pos.x,

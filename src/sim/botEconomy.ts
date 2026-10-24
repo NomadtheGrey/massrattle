@@ -37,14 +37,14 @@
 import type { SeatSimState } from '../types';
 import {
   typeFor, typeStepPrice, hullStepPrice, switchToll, autoGunCapFor, turretMountPriceFor,
-  DRONE_PRICE, DEFENSE_DRONE_PRICE, type ShipLine,
+  capsFor, DRONE_PRICE, DEFENSE_DRONE_PRICE, type ShipLine,
 } from '../shipProgression';
 import { LOADOUT_ITEMS, getLoadoutItem, itemTierCost, canMountWeapon, MAX_ITEM_TIER } from '../loadout';
 import {
   inTeamWell, walletPay,
   seatBuyType, seatBuyHullStep, seatSwitchLine, seatBuildDrone, seatBuildDefenseDrone,
-  seatBuyTurretMount, seatBuyItem,
-  type SeatShopCtx, type SeatShopChange,
+  seatBuyTurretMount, seatBuyItem, seatBuyTrack, trackPriceFor,
+  type SeatShopCtx, type SeatShopChange, type UpgradeTrack,
 } from './seatShop';
 
 /** Purchase evaluation cadence per bot (ms of loop clock). DRAFT. */
@@ -69,6 +69,18 @@ const botItemOrder = (ownerId: string): string[] => {
   const ids = LOADOUT_ITEMS.map(d => d.id);
   const rot = seatHash(ownerId) % ids.length;
   return [...ids.slice(rot), ...ids.slice(0, rot)];
+};
+
+/** The seat's track shopping order — the base order rotated by
+ *  the seat's hash, so each bot favors its own track first and
+ *  may max it before touching what it needs most (Adam's latitude,
+ *  2026-10-24: bots may make mistakes in judgment, whatever).
+ *  No optimizer, no regret logic — the walk buys first-affordable
+ *  in this order, mistakes included. */
+const botTrackOrder = (ownerId: string): UpgradeTrack[] => {
+  const base: UpgradeTrack[] = ['fuel', 'cargo', 'attractor', 'thrust', 'handling'];
+  const rot = seatHash(ownerId) % base.length;
+  return [...base.slice(rot), ...base.slice(0, rot)];
 };
 
 interface BotGoal {
@@ -100,6 +112,21 @@ export const botGoals = (seat: SeatSimState, ctx: SeatShopCtx): BotGoal[] => {
   const fielded = ctx.drones.filter(d => d.ownerId === seat.ownerId && d.mode !== 'defense' && !d.starFleet && !d.liquidating).length;
   if (fielded < typeFor(ship.line, ship.typeTier).dronesFielded) {
     goals.push({ price: DRONE_PRICE, apply: (s, c) => seatBuildDrone(s, c) });
+  }
+  // Upgrade tracks, in the seat's own favorite order (rotated by
+  // its hash, like the arsenal order): a bot favors its first
+  // track and may max it before touching what it needs most —
+  // that imperfection is the design, not a bug to optimize away.
+  // Same prices, caps, and wallet as players (seatBuyTrack); the
+  // driver honors every track, so no goal buys a no-op.
+  const trackOrder = botTrackOrder(seat.ownerId);
+  const trackCaps = capsFor(ship.line, ship.typeTier);
+  for (const t of trackOrder) {
+    const levelKey = t === 'fuel' ? 'fuelCap' : t;
+    const level = ship.upgrades[levelKey];
+    const capKey = t === 'attractor' ? 'vac' : t === 'fuel' ? 'fuel' : t;
+    if (level >= trackCaps[capKey]) continue;
+    goals.push({ price: trackPriceFor(t, level), apply: (s, c) => seatBuyTrack(s, c, t) });
   }
   // Defense pair.
   const guards = ctx.drones.filter(d => d.ownerId === seat.ownerId && d.mode === 'defense').length;
