@@ -532,11 +532,24 @@ export const stepBotShip = (
   }
 
   // --- Steer + integrate ------------------------------------------
+  // FUEL: thrust burns the tank at the player's rate, and a dry
+  // tank coasts — no accel, friction only. When not thrusting
+  // the tank regens at the player's rate, so a dry bot limps
+  // home instead of stranding. (Cargo-to-fuel auto-convert is
+  // NOT mirrored: it stretches a sortie, it is not a limitation.)
+  let thrusting = false;
   if (target) {
     const want = Math.atan2(target.y - ship.pos.y, target.x - ship.pos.x);
     ship.angle = angleLerp(ship.angle, want, BOT_DRIVER.TURN_RATE * dtFrames);
-    ship.vel.x += Math.cos(ship.angle) * BOT_DRIVER.ACCEL * dtFrames;
-    ship.vel.y += Math.sin(ship.angle) * BOT_DRIVER.ACCEL * dtFrames;
+    if ((ship.fuel ?? maxFuel) > PHYSICS.FUEL_CONSUMPTION) {
+      ship.fuel = (ship.fuel ?? maxFuel) - PHYSICS.FUEL_CONSUMPTION;
+      ship.vel.x += Math.cos(ship.angle) * BOT_DRIVER.ACCEL * dtFrames;
+      ship.vel.y += Math.sin(ship.angle) * BOT_DRIVER.ACCEL * dtFrames;
+      thrusting = true;
+    }
+  }
+  if (!thrusting) {
+    ship.fuel = Math.min((ship.fuel ?? maxFuel) + PHYSICS.FUEL_REGEN, maxFuel);
   }
   // Hostile-star avoidance: a soft push out of the burn approach,
   // plus a hard keep-out so the driver never parks inside a star.
@@ -579,7 +592,7 @@ export const stepBotShip = (
   }
   ship.pos.x += ship.vel.x * dtFrames;
   ship.pos.y += ship.vel.y * dtFrames;
-  ship.thrust = speed > 0.4;
+  ship.thrust = thrusting;
 
   // --- Collect / deliver on contact --------------------------------
   if (targetScrap && !returning) {
@@ -598,6 +611,18 @@ export const stepBotShip = (
       result.deliverAmount = ship.carrying;
       ship.carrying = 0;
     }
+  }
+
+  // BOT FUEL (Adam's ruling 2026-10-24: bots live by the same
+  // limitations as players): the tank is the ship's own fuel /
+  // maxFuel (starter 100). Home is the refill — inside the
+  // delivery radius the tank fills at once.
+  const maxFuel = ship.maxFuel ?? 100;
+  if (
+    Math.hypot(ship.pos.x - ownStar.pos.x, ship.pos.y - ownStar.pos.y) <
+    ownStar.size + BOT_DRIVER.DEPOSIT_RADIUS
+  ) {
+    ship.fuel = maxFuel;
   }
 
   // --- Fire the equipped starter weapon ----------------------------
