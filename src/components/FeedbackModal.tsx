@@ -5,102 +5,44 @@
  *
  * THE SHAPE (BioForge's proven one, carried over): the modal
  * composes ONE note — subject + body — and every door reads
- * that same composed note. The direct send is a plain fetch
- * POST to EmailJS's public API (no SDK); it never hangs (10
- * seconds, then it gives up) and never throws (a refusal lands
- * in 'failed' with the words intact and the reason on screen).
+ * that same composed note. The send arm lives in BG's module
+ * (src/feedbackSend.ts: plain fetch POST to EmailJS's public
+ * API, no SDK, 10-second timeout, never throws); this modal
+ * only owns the form, the failure display, and the escapes.
  * COPY MY NOTE carries the full composed note out, so a failed
- * send traps nothing.
+ * send traps nothing. A sent note resets on reopen.
  *
  * THE DESTINATION, PARAMETERIZED (Adam, 2026-10-24: 'I'll make
  * another email for Mass Rattle'): BioForge's EmailJS account
- * is NOT reused. These constants stay null until Adam's new
- * Mass Rattle mailbox exists, and the wiring commit fills them
- * — the same public-config pattern BioForge used:
- *   FEEDBACK_EMAIL  — the new mailbox address (mailto door)
- *   EMAILJS_SERVICE_ID — Email Services → the Gmail service
- *   EMAILJS_TEMPLATE_ID — Email Templates → the template,
- *     declaring {{subject}} / {{message}} / Reply-To {{reply_to}}
- *   EMAILJS_PUBLIC_KEY — Account → API Keys → Public Key
- * The private key is NEVER collected (BioForge's strict-mode
- * rule): the game sends with the public key only, and the
- * account's Allowed Domains list must include Mass Rattle's
- * live address, or the service refuses the send.
+ * is NOT reused. The module's wiring point (its EMAILJS_*
+ * constants + FEEDBACK_EMAIL) stays null until Adam's new
+ * Mass Rattle mailbox exists; the wiring commit fills them —
+ * public config only, the private key never collected.
  * Until then the direct door stays dark, honestly: SEND NOTE
- * is disabled with the reason on screen, and COPY MY NOTE —
- * which needs no account at all — carries the note out today.
+ * is disabled with the reason on screen, COPY MY NOTE (which
+ * needs no account) carries the note out today, and the mailto
+ * door appears the moment the address exists.
+ *
+ * THE UNION GUARD (2026-10-24): the module's result is a
+ * discriminated union, and this project's tsconfig runs
+ * without strictNullChecks — under it tsc will NOT narrow
+ * that union on .ok (verified three ways). So this modal
+ * reads failures through the isSendFailure predicate below,
+ * which narrows fine. Do not replace the guard with a bare
+ * .ok check without turning strictNullChecks on project-wide.
  */
 
 import * as React from 'react';
 import { copyTextToClipboard } from './lobby/LobbyScreen';
 
-/** The new Mass Rattle mailbox — null until Adam makes it. */
-export const FEEDBACK_EMAIL: string | null = null;
-/** EmailJS public config — null until Adam's new account is wired. */
-export const EMAILJS_SERVICE_ID: string | null = null;
-export const EMAILJS_TEMPLATE_ID: string | null = null;
-export const EMAILJS_PUBLIC_KEY: string | null = null;
+import { sendFeedback, feedbackSendConfigured, FEEDBACK_EMAIL } from '../feedbackSend';
+import type { FeedbackSendResult, FeedbackSendFailure } from '../feedbackSend';
 
-const EMAILJS_ENDPOINT = 'https://api.emailjs.com/api/v1.0/email/send';
-
-/** Ten seconds: a feedback send must never hold the modal hostage. */
-const SEND_TIMEOUT_MS = 10_000;
-
-export type FeedbackSendFailure = 'unconfigured' | 'network' | 'rejected';
-
-/** Never throws — read the reason, never a stack.
- *  FLAT, NOT A DISCRIMINATED UNION, ON PURPOSE: this project's
- *  tsconfig runs without strictNullChecks, and under it tsc
- *  will not narrow a { ok: true } | { ok: false, ... } union
- *  on .ok (verified 2026-10-24: the union form errors here
- *  while the flat form passes). Do not re-discriminate this
- *  without turning strictNullChecks on project-wide. */
-export type FeedbackSendResult = {
-  ok: boolean;
-  reason?: FeedbackSendFailure;
-  status?: number;
-};
-
-/** Is the direct-send door lit? All three constants must be addressed. */
-export function feedbackSendConfigured(): boolean {
-  return !!EMAILJS_SERVICE_ID && !!EMAILJS_TEMPLATE_ID && !!EMAILJS_PUBLIC_KEY;
-}
-
-async function sendFeedback(input: {
-  subject: string;
-  message: string;
-  fromEmail?: string;
-}): Promise<FeedbackSendResult> {
-  if (!feedbackSendConfigured()) return { ok: false, reason: 'unconfigured' };
-  const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), SEND_TIMEOUT_MS);
-  try {
-    const templateParams: Record<string, string> = {
-      subject: input.subject,
-      message: input.message,
-    };
-    if (input.fromEmail) {
-      templateParams.from_email = input.fromEmail;
-      templateParams.reply_to = input.fromEmail;
-    }
-    const res = await fetch(EMAILJS_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        service_id: EMAILJS_SERVICE_ID,
-        template_id: EMAILJS_TEMPLATE_ID,
-        user_id: EMAILJS_PUBLIC_KEY,
-        template_params: templateParams,
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok) return { ok: false, reason: 'rejected', status: res.status };
-    return { ok: true };
-  } catch {
-    return { ok: false, reason: 'network' };
-  } finally {
-    window.clearTimeout(timer);
-  }
+/** Narrow the module's union result to its failure member.
+ *  A bare .ok check does NOT narrow under this tsconfig (see
+ *  the header); an explicit predicate does. */
+function isSendFailure(r: FeedbackSendResult): r is { ok: false; reason: FeedbackSendFailure; status?: number } {
+  return !r.ok;
 }
 
 type SendPhase = 'compose' | 'sending' | 'sent' | 'failed';
@@ -150,11 +92,11 @@ export function FeedbackModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
       message: composedBody,
       fromEmail: replyEmail.trim() || undefined,
     });
-    if (result.ok) {
-      setPhase('sent');
-    } else {
-      setFailInfo({ reason: result.reason ?? 'network', status: result.status });
+    if (isSendFailure(result)) {
+      setFailInfo({ reason: result.reason, status: result.status });
       setPhase('failed');
+    } else {
+      setPhase('sent');
     }
   };
 
@@ -243,13 +185,27 @@ export function FeedbackModal({ isOpen, onClose }: { isOpen: boolean; onClose: (
                   <p className="font-mono text-[9px] sm:text-[10px] text-zinc-400 leading-snug">{failWords}</p>
                 </div>
               )}
+              {FEEDBACK_EMAIL && (phase === 'failed' || !directSend) && (
+                <div className="flex flex-col gap-2 border border-zinc-800 rounded px-3 py-2">
+                  <p className="font-mono text-[9px] sm:text-[10px] text-zinc-400 leading-snug">
+                    Or send it through your own email app — same note, same address:
+                  </p>
+                  <span className="font-mono text-[11px] text-zinc-200 select-all">{FEEDBACK_EMAIL}</span>
+                  <a
+                    href={`mailto:${FEEDBACK_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(composedBody)}`}
+                    className="w-full text-center px-3 py-2 rounded border border-zinc-700 text-zinc-200 font-mono text-[10px] sm:text-[11px] font-bold tracking-widest touch-manipulation"
+                  >
+                    ✉️ OPEN IN EMAIL APP
+                  </a>
+                </div>
+              )}
               <button
                 type="button"
                 disabled={!directSend || !message.trim() || phase === 'sending'}
                 onClick={handleDirectSend}
                 className="w-full px-3 py-2 rounded border border-zinc-700 text-zinc-200 font-mono text-[10px] sm:text-[11px] font-bold tracking-widest touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {phase === 'sending' ? 'SENDING…' : '📨 SEND NOTE'}
+                {phase === 'sending' ? 'SENDING…' : phase === 'failed' ? '↻ TRY SENDING AGAIN' : '📨 SEND NOTE'}
               </button>
               <button
                 type="button"
