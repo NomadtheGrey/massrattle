@@ -21,12 +21,13 @@
  * spinner must never owe its player a stack trace. The form
  * owns the fallback door (mailto); this module only reports.
  *
- * THE DARK-UNTIL-LIT LAW: EMAILJS_* are all null until Adam
- * picks the account shape (reuse BioForge's setup, a new
- * template in the same account, or mailto-only) and the wiring
- * lands on his word; feedbackSendConfigured() is false then,
- * and the form keeps its mailto door. A half-addressed service
- * never half-sends.
+ * THE DARK-UNTIL-LIT LAW: EMAILJS_* are all null until Adam's
+ * own Mass Rattle account is ready (his call, 2026-10-24: a
+ * separate email and EmailJS account he creates himself —
+ * BioForge's account is NOT reused) and the wiring lands on
+ * his word; feedbackSendConfigured() is false then, and the
+ * form keeps its mailto door. A half-addressed service never
+ * half-sends.
  *
  * ANTI-ABUSE (named honestly): the public key is DESIGNED to
  * ship in client code — its safety is not secrecy. What stops
@@ -38,12 +39,21 @@
  * not protection.
  */
 
-// WIRING POINT (Adam's word required): these fill in only when
-// Adam picks the account shape via the dev chat. Until then
-// they stay null and the form stays on its mailto door.
+// WIRING POINT (Adam's word required): these fill in only from
+// Adam's own Mass Rattle EmailJS account, once he has created
+// it (separate email + account, his call 2026-10-24 — never
+// BioForge's account). Until then they stay null and the form
+// stays on its mailto door. The private key is never collected.
 const EMAILJS_SERVICE_ID: string | null = null;
 const EMAILJS_TEMPLATE_ID: string | null = null;
 const EMAILJS_PUBLIC_KEY: string | null = null;
+
+/**
+ * The address the form's mailto fallback door writes to — also
+ * Adam's new Mass Rattle address, null until it exists. The
+ * form shows the mailto door only when this is set.
+ */
+export const FEEDBACK_EMAIL: string | null = null;
 
 const EMAILJS_ENDPOINT = 'https://api.emailjs.com/api/v1.0/email/send';
 
