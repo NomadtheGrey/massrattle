@@ -55,6 +55,7 @@ import {
 } from '../sim/salvage';
 import { appendEventRecords, EventFeedEntry } from '../sim/eventFeed';
 import { turretsForMilestones, turretRingRadius, turretDamageFor, turretFireChanceFor, turretAngleAt, targetInTurretArc, applyDeliveryHeal } from '../starDefense';
+import { reconcileTurrets, stepTurretRegen, damageTurret, turretPos, TURRET_POD_DAMAGE, TURRET_HIT_RADIUS } from '../sim/turretState';
 import { weaponStatsFor, shieldMaxFor, shieldRechargePerFrame, armorHullFor, armorThrustFactor, PD_RANGE, PD_COOLDOWN_MS, pdDamageFor, decoyHealthFor, decoyLifeFramesFor, gravFactorFor, thornDamageFor, aegisAbsorbFor } from '../loadout';
 import { ShipLine, TypeTier, DRONE_MAX_HEALTH, typeFor, capsFor, typeStepPrice, hullStepPrice, hullSizeFor, HULL_STEP_HEALTH, switchToll, DRONE_PRICE, DEFENSE_DRONE_PRICE, EXTRA_MOUNT_DAMAGE, AUTO_GUN, autoGunCapFor, effectiveAutoGuns, turretMountPriceFor, ESCORT_KIND_DEFS, escortCapFor, escortKindOf, canOrderWorkforce, healCapPctFor, healRateFor, type EscortKind } from '../shipProgression';
 
@@ -2242,6 +2243,21 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
             const dy = s.pos.y - c.pos.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
 
+            // TURRET HITS (Adam, 2026-10-24): a pod drifting through
+            // a HOSTILE star's ring dents its turrets (5 HP DRAFT)
+            // and is consumed, like a star wound. Friendly rings
+            // are passed through — a pod feeds its own star, it
+            // does not dent its own guns.
+            for (const t of s.turrets || []) {
+              if (t.destroyed) continue;
+              if (c.ownerId === s.ownerId || areTeammates(simSeats, c.ownerId, s.ownerId)) continue;
+              const tp = turretPos(s, t);
+              if (Math.hypot(tp.x - c.pos.x, tp.y - c.pos.y) < TURRET_HIT_RADIUS) {
+                damageTurret(s, t, TURRET_POD_DAMAGE, time);
+                return false; // Cargo consumed
+              }
+            }
+
             if (dist < s.size + 10) {
               const amount = 1;
               if (c.ownerId === s.ownerId || areTeammates(simSeats, c.ownerId, s.ownerId)) {
@@ -2725,13 +2741,17 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
           // Gravity and banking read the EFFECTIVE radius instead,
           // so the collapse never weakens the well.
           s.size = physicalSizeForStar(s);
-          s.turrets = turretsForMilestones(milestonesForInfused(s.totalScrapInfused));
+          s.turrets = reconcileTurrets(s.turrets, turretsForMilestones(milestonesForInfused(s.totalScrapInfused)));
           // ORBIT (Adam, 2026-10-21): the ladder list carries BASE
           // angles; each turret's live angle is derived from the
           // loop clock and stamped here, so the firing code below
           // and the canvas both read the turret where it IS — and
           // snapshots carry the stamped angle to guests as-is.
           for (const t of s.turrets) t.angle = turretAngleAt(t, time);
+          // TURRET REGEN (Adam, 2026-10-24): the queue ticks here,
+          // beside the reconciliation that owns the list — one
+          // destroyed turret back every 30 s, oldest first.
+          stepTurretRegen(s, frameDtMs);
         });
         // TARGETING (unchanged from the single-turret era, and shared by
         // every turret on a star): turrets may fire only while their
@@ -2776,6 +2796,7 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
           if (dist >= PHYSICS.DEFENSE.RANGE) return;
 
           s.turrets.forEach(t => {
+            if (t.destroyed) return; // a destroyed turret holds fire until regen restores it
             const ring = turretRingRadius(s.size, t.shell);
             // FIRING ARC (Adam, 2026-10-21): a turret engages only
             // targets inside its outward sector (see

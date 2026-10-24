@@ -42,6 +42,7 @@ import { BOT_DIFFICULTY } from './botDifficulty';
 import type { BotDifficulty } from '../net/protocol';
 import { milestonesForInfused } from '../starGrowth';
 import { canDockAt, HARBOR_DOCK_RANGE } from './harbor';
+import { turretPos } from './turretState';
 import type {
   Harvester,
   Projectile,
@@ -210,6 +211,19 @@ const seatHash = (ownerId: string): number => {
 };
 
 /**
+ * TURRET AFFINITY (Adam, 2026-10-24 — bots MAY target turrets,
+ * captains differ): a captain's standing attitude to enemy guns,
+ * stable per seat like every other seatHash read — prefer hunts
+ * and shoots turrets first, opportunistic takes them only when no
+ * ship is in play, ignore never touches them. Exported for the
+ * sanity suite; the driver is its only caller.
+ */
+export const turretAffinityFor = (ownerId: string): 'ignore' | 'opportunistic' | 'prefer' => {
+  const affinities = ['ignore', 'opportunistic', 'prefer'] as const;
+  return affinities[seatHash(ownerId) % 3];
+};
+
+/**
  * REPAIR DISPOSITION (Adam's ruling via DAMAGE_CONTROL.md): the
  * chance a bot chooses to heal at a given hull fraction —
  * ≈5% at 95% health, ≈80% at 20% — with a straight DRAFT curve
@@ -373,6 +387,24 @@ export const stepBotShip = (
     }
   }
 
+  // Turret scan (2026-10-24): nearest ALIVE hostile turret inside
+  // aggro, for captains that hunt guns. Turrets are star furniture
+  // — no docked state, no cloak — so the scan is pure geometry.
+  let huntTurret: { pos: { x: number; y: number }; star: Star } | null = null;
+  let bestTurretD = diff.aggroRange;
+  for (const s of world.stars) {
+    if (!areHostile(world.seats, s.ownerId, seat.ownerId)) continue;
+    for (const t of s.turrets || []) {
+      if (t.destroyed) continue;
+      const tp = turretPos(s, t);
+      const dd = Math.hypot(tp.x - ship.pos.x, tp.y - ship.pos.y);
+      if (dd < bestTurretD) {
+        bestTurretD = dd;
+        huntTurret = { pos: tp, star: s };
+      }
+    }
+  }
+
   // DEFEND reads: the seat's drones (any hostile on them is
   // engaging the seat's units) and the threats to the home star.
   const myDrones = world.drones.filter(d => d.ownerId === seat.ownerId && d.state !== 'docked');
@@ -406,6 +438,20 @@ export const stepBotShip = (
     engagesMyUnits(huntShip) ||
     bestAggro <= 300
   );
+
+  // Turret reactive: the gun's star threatens home, or the gun is
+  // point-blank on the bot — the ship reactive rule, with the
+  // turret's star standing in for the ship's position.
+  const reactiveTurret = !!huntTurret && (
+    Math.hypot(huntTurret.star.pos.x - ownStar.pos.x, huntTurret.star.pos.y - ownStar.pos.y) <= BOT_DRIVER.DEFEND_RANGE ||
+    bestTurretD <= 300
+  );
+  // TURRET PREY: whether this captain's hunt may end at a gun —
+  // prefer takes the gun over the ship, opportunistic takes it
+  // only when no ship is in play, ignore never.
+  const turretAffinity = turretAffinityFor(seat.ownerId);
+  const preyTurret = turretAffinity !== 'ignore' && huntTurret &&
+    (turretAffinity === 'prefer' || !huntShip) ? huntTurret : null;
 
   const healthPct = ship.health / Math.max(1, ship.maxHealth);
   let searchEntry = searchBySeat.get(seat.ownerId);
@@ -476,10 +522,12 @@ export const stepBotShip = (
       x: ownStar.pos.x + Math.cos(ang) * ring,
       y: ownStar.pos.y + Math.sin(ang) * ring,
     };
-  } else if (huntShip && (!trailing || reactive)) {
+  } else if ((huntShip || preyTurret) && (!trailing || reactive || reactiveTurret)) {
     objective = 'hunt';
+    const preyPos = preyTurret ? preyTurret.pos : huntShip.pos;
+    const preyD = preyTurret ? bestTurretD : bestAggro;
     // Hold at firing range: inside it, coast and shoot.
-    target = bestAggro > diff.fireRange * 0.8 ? huntShip.pos : null;
+    target = preyD > diff.fireRange * 0.8 ? preyPos : null;
   } else {
     // Harvest scan (nearest scrap, as ever).
     let bestD = Infinity;
@@ -648,10 +696,28 @@ export const stepBotShip = (
     wStats.kind !== 'mine' &&
     world.time >= (ship.fireReadyAt || 0)
   ) {
-    // Nearest hostile: drones first (the harvest war), then ships.
+    // Nearest hostile: drones first (the harvest war), then turrets
+    // for captains that hunt guns (prefer, before ships), then
+    // ships, then turrets for opportunistic captains — the siege
+    // star last, as ever.
     // (TEAMS: hostile TEAM — a bot never fires on its own side.)
     let fireTarget: { x: number; y: number } | null = null;
     let bestD = diff.fireRange;
+    // Nearest hostile turret in range, for the affinity slots below.
+    const nearestTurret = (): { x: number; y: number } | null => {
+      let best: { x: number; y: number } | null = null;
+      let bestT = diff.fireRange;
+      for (const s of world.stars) {
+        if (!areHostile(world.seats, s.ownerId, seat.ownerId)) continue;
+        for (const t of s.turrets || []) {
+          if (t.destroyed) continue;
+          const tp = turretPos(s, t);
+          const dd = Math.hypot(tp.x - ship.pos.x, tp.y - ship.pos.y);
+          if (dd < bestT) { bestT = dd; best = tp; }
+        }
+      }
+      return best;
+    };
     for (const d of world.drones) {
       if (d.state === 'docked') continue; // inside its ship
       if (!areHostile(world.seats, d.ownerId, seat.ownerId)) continue;
@@ -660,6 +726,9 @@ export const stepBotShip = (
         bestD = dd;
         fireTarget = d.pos;
       }
+    }
+    if (!fireTarget && turretAffinityFor(seat.ownerId) === 'prefer') {
+      fireTarget = nearestTurret();
     }
     if (!fireTarget) {
       for (const hostile of world.ships) {
@@ -679,6 +748,9 @@ export const stepBotShip = (
           fireTarget = hostile.ship.pos;
         }
       }
+    }
+    if (!fireTarget && turretAffinityFor(seat.ownerId) === 'opportunistic') {
+      fireTarget = nearestTurret();
     }
     if (!fireTarget && objective === 'siege' && siegeStar) {
       // SIEGE FIRE (slice 5a): only on the siege objective — a

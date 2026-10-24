@@ -2,9 +2,9 @@
  * TARGET LOCKS (CONTROLS.md; commissioned as the follow-on
  * contract closing the Controls landing's named waits, 2026-10-22):
  * a ship may hold ONE lock — `Ship.targetId`, the ownerId of a
- * hostile capital ship — set by Tab's cycle or by click/tap
- * (UI's surface), read tomorrow by the Lightning Lock
- * (SIGNATURE_ABILITIES.md). The law here is the whole contract:
+ * hostile capital ship, or a turret id `turret:<starOwnerId>:<id>`
+ * — set by Tab's cycle or by click/tap (UI's surface), read
+ * tomorrow by the Lightning Lock (SIGNATURE_ABILITIES.md). The law here is the whole contract:
  *
  * VALIDITY = hostile + alive + unsheltered + VISIBLE under the
  * stealth geometry (src/sim/stealth.ts is the one table — a
@@ -26,15 +26,27 @@
 import type { SeatSimState, Ship } from '../types';
 import { areHostile } from './teams';
 import { isVisibleTo } from './stealth';
+import {
+  isValidTurretTarget,
+  parseTurretTargetId,
+  validTurretTargetIds,
+} from './turretState';
 
-/** May `observer` hold a lock on the ship owned by
- *  `targetOwnerId` right now? */
+/** May `observer` hold a lock on `targetOwnerId` right now? Ships
+ *  by ownerId, turrets by `turret:<starOwnerId>:<turretId>` — the
+ *  turret branch reads the turret validity law (hostile + alive),
+ *  so a lock on a destroyed turret clears the frame it dies, like
+ *  every other stale lock. */
 export const isValidTarget = (
   seats: SeatSimState[],
   observer: Ship,
   targetOwnerId: string | null | undefined,
 ): boolean => {
   if (!targetOwnerId || targetOwnerId === observer.ownerId) return false;
+  const turret = parseTurretTargetId(targetOwnerId);
+  if (turret) {
+    return isValidTurretTarget(seats, observer.ownerId, turret.starOwnerId, turret.turretId);
+  }
   const target = seats.find(s => s.ownerId === targetOwnerId)?.ship;
   if (!target || target.health <= 0) return false;
   if (target.dockedTo) return false;
@@ -43,9 +55,13 @@ export const isValidTarget = (
 };
 
 /** Every currently valid lock target for `observer`, in seat
- *  order — the cycle's track. */
-export const validTargetIds = (seats: SeatSimState[], observer: Ship): string[] =>
-  seats.filter(s => s.ship && isValidTarget(seats, observer, s.ownerId)).map(s => s.ownerId);
+ *  order — the cycle's track. Ships first (seat order), then
+ *  turrets (seat order, ladder order within each star) — one
+ *  track, so Tab walks ships and then their stars' guns. */
+export const validTargetIds = (seats: SeatSimState[], observer: Ship): string[] => [
+  ...seats.filter(s => s.ship && isValidTarget(seats, observer, s.ownerId)).map(s => s.ownerId),
+  ...validTurretTargetIds(seats, observer.ownerId),
+];
 
 /** The cycle's next stop: the valid target after the current
  *  lock in seat order (wrapping), the first valid target when
