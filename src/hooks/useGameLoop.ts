@@ -1213,7 +1213,9 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
   // is the browser's, not ours; confirming still refreshes, so a
   // deliberate refresh always works. Armed only while a match is on
   // the field — a live/cinematic room, or a solo match not yet
-  // ended (tutorial flights included) — never in the lobby or on
+  // ended (tutorial flights included; a solo defeat ends it too —
+  // the save is already cleared at game over, so there is nothing
+  // left to lose) — never in the lobby or on
   // menus, where there is nothing to lose. The game's own reloads
   // set intentionalReloadRef first and never trip it.
   useEffect(() => {
@@ -1222,7 +1224,7 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
       const roomPhase = netRef.current?.room?.phase;
       const matchLive = roomPhase
         ? roomPhase === 'live' || roomPhase === 'cinematic'
-        : !!(stateRef.current && !stateRef.current.matchEnd);
+        : !!(stateRef.current && !stateRef.current.matchEnd && !stateRef.current.isGameOver);
       if (!matchLive) return;
       e.preventDefault();
       e.returnValue = '';
@@ -2317,6 +2319,15 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
         // match is hosted (single-player, lobby backdrop).
         if (ship.health <= 0 && !next.isGameOver && !hosting) {
           next.isGameOver = true;
+          // DEATH-LOOP FIX (Adam, 2026-10-24): solo game over
+          // clears the solo save IN THIS FRAME — the save is the
+          // pre-death match, and leaving it means ANY reload after
+          // death (re-initialize, restart, browser refresh) resumes
+          // into the death neighborhood and dies again. Clearing
+          // here closes every reload path at once; re-initialize
+          // then boots a fresh match at the home star. Rooms never
+          // touch the solo save, so the room guard stands.
+          if (!netRef.current?.room) clearSoloGame();
         }
         if (next.isVictory || next.isGameOver) {
           ship.thrust = false;
