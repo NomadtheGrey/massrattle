@@ -541,14 +541,21 @@ export const stepBotShip = (
   // the tank regens at the player's rate, so a dry bot limps
   // home instead of stranding. (Cargo-to-fuel auto-convert is
   // NOT mirrored: it stretches a sortie, it is not a limitation.)
+  // TRACKS (same-limitations ruling): thrust adds the player's
+  // +0.08/track step to the bot's base accel, handling adds the
+  // player's +0.005/track turn step and -0.01/track friction step
+  // (floor 0.90), vacuum adds the 35/track vac bonus to the
+  // collect radius — bot bases preserved, so a bought track is
+  // never a no-op. Cargo and fuel were already live (capacity
+  // formula, maxFuel) before this landing.
   let thrusting = false;
   if (target) {
     const want = Math.atan2(target.y - ship.pos.y, target.x - ship.pos.x);
-    ship.angle = angleLerp(ship.angle, want, BOT_DRIVER.TURN_RATE * dtFrames);
+    ship.angle = angleLerp(ship.angle, want, (BOT_DRIVER.TURN_RATE + ship.upgrades.handling * 0.005) * dtFrames);
     if ((ship.fuel ?? maxFuel) > PHYSICS.FUEL_CONSUMPTION) {
       ship.fuel = (ship.fuel ?? maxFuel) - PHYSICS.FUEL_CONSUMPTION;
-      ship.vel.x += Math.cos(ship.angle) * BOT_DRIVER.ACCEL * dtFrames;
-      ship.vel.y += Math.sin(ship.angle) * BOT_DRIVER.ACCEL * dtFrames;
+      ship.vel.x += Math.cos(ship.angle) * (BOT_DRIVER.ACCEL + ship.upgrades.thrust * 0.08) * dtFrames;
+      ship.vel.y += Math.sin(ship.angle) * (BOT_DRIVER.ACCEL + ship.upgrades.thrust * 0.08) * dtFrames;
       thrusting = true;
     }
   }
@@ -575,8 +582,8 @@ export const stepBotShip = (
       ship.pos.y = s.pos.y + (dy / dist) * keepOut;
     }
   }
-  ship.vel.x *= BOT_DRIVER.FRICTION;
-  ship.vel.y *= BOT_DRIVER.FRICTION;
+  ship.vel.x *= Math.max(BOT_DRIVER.FRICTION - ship.upgrades.handling * 0.01, PHYSICS.FRICTION_MAX);
+  ship.vel.y *= Math.max(BOT_DRIVER.FRICTION - ship.upgrades.handling * 0.01, PHYSICS.FRICTION_MAX);
   // Siege approach discipline: inside the stand-off's approach
   // band the bot flies a slow final, so arrival momentum cannot
   // carry it past the stand-off into the burn (see the siege
@@ -604,7 +611,9 @@ export const stepBotShip = (
       targetScrap.pos.x - ship.pos.x,
       targetScrap.pos.y - ship.pos.y,
     );
-    if (dd < BOT_DRIVER.COLLECT_RADIUS && ship.carrying < capacity) {
+    // VACUUM: the 35/track vac bonus (attractRadiusForShip's step)
+    // widens the touch radius — the driver's mirror of vac pull.
+    if (dd < BOT_DRIVER.COLLECT_RADIUS + ship.upgrades.attractor * 35 && ship.carrying < capacity) {
       ship.carrying += 1;
       result.collectedScrapIds.push(targetScrap.id);
     }

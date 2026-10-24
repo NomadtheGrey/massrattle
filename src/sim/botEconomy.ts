@@ -37,14 +37,14 @@
 import type { SeatSimState } from '../types';
 import {
   typeFor, typeStepPrice, hullStepPrice, switchToll, autoGunCapFor, turretMountPriceFor,
-  DRONE_PRICE, DEFENSE_DRONE_PRICE, type ShipLine,
+  capsFor, DRONE_PRICE, DEFENSE_DRONE_PRICE, type ShipLine,
 } from '../shipProgression';
 import { LOADOUT_ITEMS, getLoadoutItem, itemTierCost, canMountWeapon, MAX_ITEM_TIER } from '../loadout';
 import {
   inTeamWell, walletPay,
   seatBuyType, seatBuyHullStep, seatSwitchLine, seatBuildDrone, seatBuildDefenseDrone,
-  seatBuyTurretMount, seatBuyItem,
-  type SeatShopCtx, type SeatShopChange,
+  seatBuyTurretMount, seatBuyItem, seatBuyTrack, trackPriceFor,
+  type SeatShopCtx, type SeatShopChange, type UpgradeTrack,
 } from './seatShop';
 
 /** Purchase evaluation cadence per bot (ms of loop clock). DRAFT. */
@@ -100,6 +100,19 @@ export const botGoals = (seat: SeatSimState, ctx: SeatShopCtx): BotGoal[] => {
   const fielded = ctx.drones.filter(d => d.ownerId === seat.ownerId && d.mode !== 'defense' && !d.starFleet && !d.liquidating).length;
   if (fielded < typeFor(ship.line, ship.typeTier).dronesFielded) {
     goals.push({ price: DRONE_PRICE, apply: (s, c) => seatBuildDrone(s, c) });
+  }
+  // Upgrade tracks, harvest help first: fuel (longer sorties),
+  // cargo (bigger hauls), vacuum (wider reach), thrust, handling.
+  // Same prices, caps, and wallet as players (seatBuyTrack); the
+  // driver honors every track, so no goal buys a no-op.
+  const trackOrder: UpgradeTrack[] = ['fuel', 'cargo', 'attractor', 'thrust', 'handling'];
+  const trackCaps = capsFor(ship.line, ship.typeTier);
+  for (const t of trackOrder) {
+    const levelKey = t === 'fuel' ? 'fuelCap' : t;
+    const level = ship.upgrades[levelKey];
+    const capKey = t === 'attractor' ? 'vac' : t === 'fuel' ? 'fuel' : t;
+    if (level >= trackCaps[capKey]) continue;
+    goals.push({ price: trackPriceFor(t, level), apply: (s, c) => seatBuyTrack(s, c, t) });
   }
   // Defense pair.
   const guards = ctx.drones.filter(d => d.ownerId === seat.ownerId && d.mode === 'defense').length;
