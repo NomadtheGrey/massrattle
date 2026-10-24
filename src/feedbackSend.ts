@@ -47,7 +47,7 @@
 // Until then they stay null and the form stays on its mailto
 // door. The private key is never collected.
 const EMAILJS_SERVICE_ID: string | null = 'service_xwyatrb';
-const EMAILJS_TEMPLATE_ID: string | null = 'template_aa6d10g';
+const EMAILJS_TEMPLATE_ID: string | null = 'template_cgttb0a';
 const EMAILJS_PUBLIC_KEY: string | null = 'UyXYjPi93K0U5OMki';
 
 /**
