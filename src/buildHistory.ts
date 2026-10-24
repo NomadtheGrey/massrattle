@@ -17,6 +17,7 @@ export interface BuildEntry {
 }
 
 export const BUILD_HISTORY: BuildEntry[] = [
+  { date: '2026-10-24', ref: 'PR #69', title: 'TURRET FLAGS, DEATH-LOOP FIX', detail: 'Click a turret to target it, destroyed hubs draw as wrecks instead of live guns, and turret locks get their amber bracket — and dying in solo no longer loops you back into enemy territory: the save clears at game over, so a fresh match starts at the home star.' },
   { date: '2026-10-24', ref: 'PR #67', title: 'TURRETS, HITTABLE', detail: 'Star guns can now be shot out: turrets take damage, go dark when destroyed, and rebuild one at a time every thirty seconds. Tab targeting includes turrets, and bot captains differ in whether they hunt them.' },
   { date: '2026-10-24', ref: 'PR #65', title: 'FEEDBACK TEMPLATE FIX', detail: 'The feedback form’s first live send was refused because it named a template that doesn’t exist — the form now points at the mailbox’s real template, so notes should send.' },
   { date: '2026-10-24', ref: 'PR #63', title: 'FEEDBACK, DONATE, HOT FIX, AND TRACKS', detail: 'The feedback form now sends for real to the grower’s mailbox, the cabinet gains a donate button with one honest Ko-fi door, bots fire only when their nose points at the target and burn fuel exactly like players, and bots buy ship upgrades on their own favorite tracks — all in one batch, with the game staying free either way.' },
