@@ -46,16 +46,16 @@
 // (his call 2026-10-24 — never BioForge's service or template).
 // Until then they stay null and the form stays on its mailto
 // door. The private key is never collected.
-const EMAILJS_SERVICE_ID: string | null = null;
-const EMAILJS_TEMPLATE_ID: string | null = null;
-const EMAILJS_PUBLIC_KEY: string | null = null;
+const EMAILJS_SERVICE_ID: string | null = 'service_xwyatrb';
+const EMAILJS_TEMPLATE_ID: string | null = 'template_aa6d10g';
+const EMAILJS_PUBLIC_KEY: string | null = 'UyXYjPi93K0U5OMki';
 
 /**
  * The address the form's mailto fallback door writes to — also
  * Adam's new Mass Rattle address, null until it exists. The
  * form shows the mailto door only when this is set.
  */
-export const FEEDBACK_EMAIL: string | null = null;
+export const FEEDBACK_EMAIL: string | null = 'massrattle@gmail.com';
 
 const EMAILJS_ENDPOINT = 'https://api.emailjs.com/api/v1.0/email/send';
 
