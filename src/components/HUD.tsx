@@ -14,6 +14,7 @@ import { TUTORIAL_STEPS, TUTORIAL_TRACKS, type TutorialSnapshot, type TutorialSp
 import { useUiOptions, setUiOption, resetUiOptions, type UiOptions } from '../uiOptions';
 import { playAllVoices, playPreviewVoice, VOICE_ORDER, VOICE_NAMES } from './AudioLayer';
 import { copyTextToClipboard } from './lobby/LobbyScreen';
+import { FeedbackModal } from './FeedbackModal';
 import { DEBUG_ARMED } from '../debug';
 import type { StarStage } from '../net/protocol';
 import { STAGE_LABELS, TEAM_LABELS, TEAM_COLORS } from './lobby/lobbyTypes';
@@ -451,6 +452,7 @@ export const HUD: React.FC<HUDProps> = ({
   // expansion hogged the frame (four rows over the star) and was
   // cut in round 2. Desktop ignores all of this.
   const [phoneStripOpen, setPhoneStripOpen] = React.useState(false);
+  const [feedbackOpen, setFeedbackOpen] = React.useState(false);
   // SOUND PREVIEW PLAYER (Adam, 2026-10-24): stepped preview
   // through the voices in HEAR ALL order. The name shown is
   // always the current voice — stepping and replay play it, and
@@ -698,8 +700,9 @@ export const HUD: React.FC<HUDProps> = ({
   // and an ESC cannot fall through to anything else. The results
   // screen is deliberately NOT in this chain — it is the match end,
   // a state rather than a popup, and its exit is the restart button.
-  const anyModalOpen = showBuilds || objectivesOpen || frameModalOpen || isShopOpen || radarActive || showOptions || tutStartOpen;
+  const anyModalOpen = feedbackOpen || showBuilds || objectivesOpen || frameModalOpen || isShopOpen || radarActive || showOptions || tutStartOpen;
   const closeTopmost = React.useCallback(() => {
+    if (feedbackOpen) { setFeedbackOpen(false); return; }
     if (tutStartOpen) { setTutStartOpen(false); return; }
     if (showBuilds) { setShowBuilds(false); return; }
     if (objectivesOpen) { setObjectivesOpen(false); return; }
@@ -711,7 +714,7 @@ export const HUD: React.FC<HUDProps> = ({
       return;
     }
     if (showOptions) { setShowOptions(false); return; }
-  }, [tutStartOpen, showBuilds, isShopOpen, onCloseShop, radarActive, onToggleMobileRadar, showOptions]);
+  }, [feedbackOpen, tutStartOpen, showBuilds, isShopOpen, onCloseShop, radarActive, onToggleMobileRadar, showOptions]);
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const isEsc = e.key === 'Escape';
@@ -2306,6 +2309,7 @@ export const HUD: React.FC<HUDProps> = ({
           instrumentation always flies. Above the guide (z-108),
           below the workshop; [X] / X / ESC close it back to the
           manual via the modal rule. */}
+      <FeedbackModal isOpen={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
       {/* THE ESC CABINET (Adam's ruling, 2026-10-22): GUIDE,
           OPTIONS, and SYS live as tabs in this one modal — the
           system's cabinet. On phone it is their ONLY home (the
@@ -2345,6 +2349,13 @@ export const HUD: React.FC<HUDProps> = ({
               className="w-full mb-4 px-3 py-2 rounded border border-emerald-800 bg-emerald-950/40 text-[#33ff33] font-mono text-[10px] sm:text-[11px] font-bold tracking-widest touch-manipulation"
             >
               🎓 TUTORIAL — YOUR ORDERS
+            </button>
+            <button
+              type="button"
+              onClick={() => setFeedbackOpen(true)}
+              className="w-full mb-4 px-3 py-2 rounded border border-zinc-700 bg-zinc-900/60 text-zinc-200 font-mono text-[10px] sm:text-[11px] font-bold tracking-widest touch-manipulation"
+            >
+              💬 FEEDBACK — TELL THE GROWER
             </button>
             {escTab === 'guide' && (
               <MechanicsGuide embedded onClose={() => setShowOptions(false)} />
