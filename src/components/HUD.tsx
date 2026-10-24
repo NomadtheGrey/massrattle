@@ -15,6 +15,7 @@ import { useUiOptions, setUiOption, resetUiOptions, type UiOptions } from '../ui
 import { playAllVoices, playPreviewVoice, VOICE_ORDER, VOICE_NAMES } from './AudioLayer';
 import { copyTextToClipboard } from './lobby/LobbyScreen';
 import { FeedbackModal } from './FeedbackModal';
+import { DonateButton } from './DonateButton';
 import { DEBUG_ARMED } from '../debug';
 import type { StarStage } from '../net/protocol';
 import { STAGE_LABELS, TEAM_LABELS, TEAM_COLORS } from './lobby/lobbyTypes';
@@ -2357,6 +2358,7 @@ export const HUD: React.FC<HUDProps> = ({
             >
               💬 FEEDBACK — TELL THE GROWER
             </button>
+            <DonateButton onOpen={() => setShowOptions(false)} />
             {escTab === 'guide' && (
               <MechanicsGuide embedded onClose={() => setShowOptions(false)} />
             )}
