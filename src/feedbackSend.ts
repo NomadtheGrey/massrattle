@@ -22,9 +22,11 @@
  * owns the fallback door (mailto); this module only reports.
  *
  * THE DARK-UNTIL-LIT LAW: EMAILJS_* are all null until Adam's
- * own Mass Rattle account is ready (his call, 2026-10-24: a
- * separate email and EmailJS account he creates himself —
- * BioForge's account is NOT reused) and the wiring lands on
+ * own Mass Rattle email is connected as an EmailJS service
+ * (his call, 2026-10-24, clarified the same day: EmailJS is a
+ * relay — it sends THROUGH the connected Mass Rattle Gmail,
+ * so the note lands in the Mass Rattle address; BioForge's
+ * service and template are NOT reused) and the wiring lands on
  * his word; feedbackSendConfigured() is false then, and the
  * form keeps its mailto door. A half-addressed service never
  * half-sends.
@@ -40,10 +42,10 @@
  */
 
 // WIRING POINT (Adam's word required): these fill in only from
-// Adam's own Mass Rattle EmailJS account, once he has created
-// it (separate email + account, his call 2026-10-24 — never
-// BioForge's account). Until then they stay null and the form
-// stays on its mailto door. The private key is never collected.
+// Adam's Mass Rattle email connected as an EmailJS service
+// (his call 2026-10-24 — never BioForge's service or template).
+// Until then they stay null and the form stays on its mailto
+// door. The private key is never collected.
 const EMAILJS_SERVICE_ID: string | null = null;
 const EMAILJS_TEMPLATE_ID: string | null = null;
 const EMAILJS_PUBLIC_KEY: string | null = null;
