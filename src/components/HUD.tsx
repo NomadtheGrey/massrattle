@@ -12,7 +12,8 @@ import { stageStateForInfused, type StarStageState } from '../sim/starStages';
 import { BUILD_HISTORY, LATEST_BUILD } from '../buildHistory';
 import { TUTORIAL_STEPS, TUTORIAL_TRACKS, type TutorialSnapshot, type TutorialSpotlight } from '../tutorial';
 import { useUiOptions, setUiOption, resetUiOptions, type UiOptions } from '../uiOptions';
-import { playAllVoices } from './AudioLayer';
+import { playAllVoices, playPreviewVoice, VOICE_ORDER, VOICE_NAMES } from './AudioLayer';
+import { copyTextToClipboard } from './lobby/LobbyScreen';
 import { DEBUG_ARMED } from '../debug';
 import type { StarStage } from '../net/protocol';
 import { STAGE_LABELS, TEAM_LABELS, TEAM_COLORS } from './lobby/lobbyTypes';
@@ -450,6 +451,13 @@ export const HUD: React.FC<HUDProps> = ({
   // expansion hogged the frame (four rows over the star) and was
   // cut in round 2. Desktop ignores all of this.
   const [phoneStripOpen, setPhoneStripOpen] = React.useState(false);
+  // SOUND PREVIEW PLAYER (Adam, 2026-10-24): stepped preview
+  // through the voices in HEAR ALL order. The name shown is
+  // always the current voice — stepping and replay play it, and
+  // HEAR ALL walks the index along as each voice sounds.
+  const [previewIndex, setPreviewIndex] = React.useState(0);
+  const [previewCopied, setPreviewCopied] = React.useState(false);
+  const previewCopiedTimer = React.useRef<number | null>(null);
   const ordersPillShown = canOrder && bankInWell && !isShopOpen;
   const stripDetailShown = phoneStripOpen;
   const dockSurfaceShown = !!ship.dockedTo || !!dockTarget;
@@ -2399,13 +2407,64 @@ export const HUD: React.FC<HUDProps> = ({
                   <span className="font-mono text-[10px] font-bold text-zinc-300 w-9 text-right">{uiOptions.soundVolume}%</span>
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => playAllVoices()}
-                className="w-full px-3 py-2 rounded border border-zinc-700 text-zinc-200 font-mono text-[10px] sm:text-[11px] font-bold tracking-widest touch-manipulation active:scale-[0.98]"
-              >
-                🔊 HEAR ALL VOICES
-              </button>
+              <div className="flex flex-col gap-2 border border-zinc-800 rounded px-3 py-2">
+                <div className="text-[10px] font-mono font-bold tracking-[0.25em] text-zinc-400">PREVIEW</div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={previewIndex === 0}
+                    onClick={() => { const i = Math.max(0, previewIndex - 1); setPreviewIndex(i); playPreviewVoice(VOICE_ORDER[i]); }}
+                    className={`shrink-0 px-2.5 py-2 rounded border font-mono text-[10px] font-bold touch-manipulation active:scale-[0.98] ${previewIndex === 0 ? 'border-zinc-800 text-zinc-600' : 'border-zinc-700 text-zinc-200'}`}
+                  >
+                    ◀ BACK
+                  </button>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    title="Click to copy this sound's name"
+                    onClick={async () => {
+                      const name = VOICE_NAMES[VOICE_ORDER[previewIndex]];
+                      if (await copyTextToClipboard(name)) {
+                        setPreviewCopied(true);
+                        if (previewCopiedTimer.current) window.clearTimeout(previewCopiedTimer.current);
+                        previewCopiedTimer.current = window.setTimeout(() => setPreviewCopied(false), 1500);
+                      }
+                    }}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); (e.target as HTMLElement).click(); } }}
+                    className="flex-1 min-w-0 text-center font-mono text-sm font-bold text-zinc-50 cursor-pointer select-text hover:text-[#33ff33] touch-manipulation truncate"
+                  >
+                    {VOICE_NAMES[VOICE_ORDER[previewIndex]]}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={previewIndex === VOICE_ORDER.length - 1}
+                    onClick={() => { const i = Math.min(VOICE_ORDER.length - 1, previewIndex + 1); setPreviewIndex(i); playPreviewVoice(VOICE_ORDER[i]); }}
+                    className={`shrink-0 px-2.5 py-2 rounded border font-mono text-[10px] font-bold touch-manipulation active:scale-[0.98] ${previewIndex === VOICE_ORDER.length - 1 ? 'border-zinc-800 text-zinc-600' : 'border-zinc-700 text-zinc-200'}`}
+                  >
+                    FORWARD ▶
+                  </button>
+                </div>
+                {previewCopied && (
+                  <div className="text-center font-mono text-[10px] font-bold text-[#33ff33]">✓ COPIED</div>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => playPreviewVoice(VOICE_ORDER[previewIndex])}
+                    className="flex-1 px-3 py-2 rounded border border-zinc-700 text-zinc-200 font-mono text-[10px] sm:text-[11px] font-bold tracking-widest touch-manipulation active:scale-[0.98]"
+                  >
+                    ↻ REPLAY
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => playAllVoices(v => { const i = VOICE_ORDER.indexOf(v); if (i >= 0) setPreviewIndex(i); })}
+                    className="flex-1 px-3 py-2 rounded border border-zinc-700 text-zinc-200 font-mono text-[10px] sm:text-[11px] font-bold tracking-widest touch-manipulation active:scale-[0.98]"
+                  >
+                    🔊 HEAR ALL VOICES
+                  </button>
+                </div>
+                <p className="text-[9px] font-mono text-zinc-500 leading-snug">Tap the name to copy it — or drag across it to highlight-copy, like any text.</p>
+              </div>
             </div>
             <div className="mt-4 pt-3 border-t border-zinc-800 flex items-center justify-between gap-3">
               <span className="text-[9px] font-mono text-zinc-500 leading-snug">Instrumentation always flies. Display only — never the sim. Saved on this device.</span>

@@ -239,19 +239,60 @@ export function setThrusting(on: boolean): void {
   }
 }
 
+/** Plain names for the preview player (Adam, 2026-10-24) — the
+ *  names testers copy, so they match the sound guide exactly.
+ *  Real words, never stats, never code identifiers. */
+export const VOICE_NAMES: Record<VoiceType, string> = {
+  fire: 'Fire',
+  hit: 'Hit',
+  explosion: 'Explosion',
+  scoop: 'Scoop',
+  bank: 'Bank',
+  feed: 'Feed',
+  buy: 'Buy',
+  climb: 'Climb',
+  milestone: 'Milestone',
+  starDamage: 'Star damage',
+  cme: 'CME',
+  decoy: 'Decoy',
+  dock: 'Dock',
+  win: 'Win',
+  lose: 'Lose',
+  ui: 'UI click',
+  chat: 'Chat',
+  thrust: 'Thrust',
+};
+
+/** Preview order — HEAR ALL's order, thrust last (it is a loop). */
+export const VOICE_ORDER: VoiceType[] = [
+  'fire', 'hit', 'explosion', 'scoop', 'bank', 'feed', 'buy', 'climb',
+  'milestone', 'starDamage', 'cme', 'decoy', 'dock', 'win', 'lose', 'ui', 'chat',
+  'thrust',
+];
+
+/** Play one voice the way the preview plays it: one-shots sound,
+ *  thrust gets its half-second loop sample. */
+export function playPreviewVoice(v: VoiceType): void {
+  unlockAudio();
+  if (v === 'thrust') {
+    setThrusting(true);
+    window.setTimeout(() => setThrusting(false), 600);
+  } else {
+    playVoice(v);
+  }
+}
+
 /** HEAR ALL (Options tab): every voice in turn, so Adam can judge
- *  the set without playing a match. Thrust gets a half-second loop. */
-export function playAllVoices(): void {
+ *  the set without playing a match. onVoice, when given, fires with
+ *  each voice as it starts — the preview player shows the name. */
+export function playAllVoices(onVoice?: (v: VoiceType) => void): void {
   unlockAudio();
   const c = ensureAudio();
   if (!c) return;
-  const voices: VoiceType[] = [
-    'fire', 'hit', 'explosion', 'scoop', 'bank', 'feed', 'buy', 'climb',
-    'milestone', 'starDamage', 'cme', 'decoy', 'dock', 'win', 'lose', 'ui', 'chat',
-  ];
-  voices.forEach((v, i) => window.setTimeout(() => playVoice(v), i * 450));
-  window.setTimeout(() => setThrusting(true), voices.length * 450);
-  window.setTimeout(() => setThrusting(false), voices.length * 450 + 600);
+  VOICE_ORDER.forEach((v, i) => window.setTimeout(() => {
+    onVoice?.(v);
+    playPreviewVoice(v);
+  }, i * 450));
 }
 
 // SOUND LAYER (Adam, 2026-10-24 — sounds pass, UI half, part 2).
