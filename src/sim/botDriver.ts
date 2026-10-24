@@ -271,6 +271,10 @@ export const stepBotShip = (
   // exactly, so absent = today's behavior, byte for byte.
   const diff = BOT_DIFFICULTY[world.difficulty ?? 'impossible'];
 
+  // The ship's tank (starter 100), declared here because the
+  // steer block below burns it before the refuel block fills it.
+  const maxFuel = ship.maxFuel ?? 100;
+
   // REPAIR DISPOSITION (B1): the pilot's health-graded choice
   // to heal, written before anything reads the toggle — the
   // harbor pass reads it for docked bots exactly as the tick
@@ -614,10 +618,8 @@ export const stepBotShip = (
   }
 
   // BOT FUEL (Adam's ruling 2026-10-24: bots live by the same
-  // limitations as players): the tank is the ship's own fuel /
-  // maxFuel (starter 100). Home is the refill — inside the
+  // limitations as players): home is the refill — inside the
   // delivery radius the tank fills at once.
-  const maxFuel = ship.maxFuel ?? 100;
   if (
     Math.hypot(ship.pos.x - ownStar.pos.x, ship.pos.y - ownStar.pos.y) <
     ownStar.size + BOT_DRIVER.DEPOSIT_RADIUS
