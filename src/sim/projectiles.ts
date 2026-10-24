@@ -28,6 +28,7 @@ import {
   thornDamageFor,
 } from '../loadout';
 import { areHostile } from './teams';
+import { damageTurret, turretPos, TURRET_HIT_RADIUS } from './turretState';
 import { escortSalvageBasis, rollSalvageValue, wreckShardScrap } from './salvage';
 import type {
   GameState,
@@ -155,6 +156,30 @@ export const stepProjectiles = (ctx: ProjectileStepContext): Projectile[] => {
     // projectile — pierce included — stops at the surface.
     for (const seat of simSeats) {
       const s = seat.star;
+      // TURRET HITS (Adam, 2026-10-24): turrets orbit OUTSIDE the
+      // disc, so a bolt meets the ring before the surface — check
+      // hostile turret hitboxes first. Friendly turrets are passed
+      // through: a ship's own outgoing fire must not die on its
+      // own star's ring. Rail lance pierces turrets as it pierces
+      // stars (deduped per turret via hitIds); every other bolt
+      // terminates on the first turret it touches.
+      for (const t of s.turrets || []) {
+        if (t.destroyed) continue;
+        if (!areHostile(simSeats, s.ownerId, p.ownerId)) continue;
+        const tp = turretPos(s, t);
+        if (Math.hypot(tp.x - p.pos.x, tp.y - p.pos.y) >= TURRET_HIT_RADIUS) continue;
+        const dmg = p.damage !== undefined ? p.damage : PHYSICS.DEFENSE.DAMAGE;
+        if (p.kind === 'rail_lance') {
+          const hitKey = `turret:${s.ownerId}:${t.id}`;
+          if (!(p.hitIds || []).includes(hitKey)) {
+            damageTurret(s, t, dmg, time);
+            (p.hitIds = p.hitIds || []).push(hitKey);
+          }
+          continue;
+        }
+        damageTurret(s, t, dmg, time);
+        return false;
+      }
       const sdx2 = s.pos.x - p.pos.x;
       const sdy2 = s.pos.y - p.pos.y;
       if (Math.sqrt(sdx2 * sdx2 + sdy2 * sdy2) >= s.size) continue;

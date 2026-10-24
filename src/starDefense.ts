@@ -48,6 +48,14 @@
  *   heal(m) = min(0.005, 0.0005 x m)   — reaches the old enemy-only
  * rate at M10. Draft values for Adam to pin; applied at the delivery
  * sites in useGameLoop via applyDeliveryHeal().
+ *
+ * TURRET STATE (Adam, 2026-10-24 — turrets hittable/targetable):
+ * the ladder above still owns MEMBERSHIP (who exists, at what tier),
+ * but each record now also carries HP/destroyed state, merged across
+ * frames by stable id in src/sim/turretState.ts (reconcileTurrets).
+ * The old "no bookkeeping" line holds for the ladder only: the state
+ * rides the records themselves, so it still needs no separate store,
+ * sync, or save handling — snapshots and solo saves carry it as-is.
  */
 
 import { PHYSICS } from './constants';
@@ -71,9 +79,9 @@ export const turretsForMilestones = (m: number): StarTurret[] => {
   // Inner shell: the starter exists from spawn (M0). Phase B tiers BOTH
   // inner turrets together: tier 2/3/4 at M2/M3/M4.
   const innerTier = 1 + Math.min(3, Math.max(0, m - 1));
-  turrets.push({ shell: 'inner', angle: -Math.PI / 2, tier: innerTier });
+  turrets.push({ id: 'inner-0', shell: 'inner', angle: -Math.PI / 2, tier: innerTier });
   if (m >= 1) {
-    turrets.push({ shell: 'inner', angle: Math.PI / 2, tier: innerTier });
+    turrets.push({ id: 'inner-1', shell: 'inner', angle: Math.PI / 2, tier: innerTier });
   }
 
   // Outer shell: Phase C adds one per milestone M5..M12 (tier 1 each);
@@ -87,6 +95,7 @@ export const turretsForMilestones = (m: number): StarTurret[] => {
       ? Math.floor((phaseDSteps - 1 - i) / OUTER_COUNT) + 1
       : 0;
     turrets.push({
+      id: `outer-${i}`,
       shell: 'outer',
       angle: (i * Math.PI) / 4,
       tier: 1 + bonus,

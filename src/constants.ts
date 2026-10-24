@@ -117,6 +117,22 @@ export const PHYSICS = {
      *  ±85° was "kinda too wide." Outside its arc a turret holds
      *  fire. */
     TURRET_ARC_HALF_RAD: Math.PI / 4,
+    /** Turret HIT POINTS — DRAFT (Adam, 2026-10-24, numbers pass):
+     *  a 12-damage bolt kills in 5 hits. Restored at full HP. */
+    TURRET_MAX_HP: 60,
+    /** Scrap-pod damage to a turret — DRAFT (Adam, 2026-10-24,
+     *  numbers pass): dev's integrity-ratio translation (bolt 12
+     *  x 0.002 chip = 0.024 integrity, so 1.0 integrity = 500 HP,
+     *  so a pod's 0.01 wound = 5 HP) — 12 pods per turret. */
+    TURRET_POD_DAMAGE: 5,
+    /** Turret REGEN cadence — PINNED (Adam, 2026-10-24): destroyed
+     *  turrets return ONE AT A TIME, one every 30 s, destruction
+     *  order first-restored, until all are replaced. */
+    TURRET_REGEN_MS: 30000,
+    /** Turret HITBOX radius — DRAFT: the canvas hub box is
+     *  9 + min(tier, 4) wide, so 14 is a touch generous — hits
+     *  feel fair without swallowing the ring. */
+    TURRET_HIT_RADIUS: 14,
   },
   /**
    * CME (Slice 7) — a star's periodic coronal mass ejection.

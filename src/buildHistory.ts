@@ -17,6 +17,7 @@ export interface BuildEntry {
 }
 
 export const BUILD_HISTORY: BuildEntry[] = [
+  { date: '2026-10-24', ref: 'PR #67', title: 'TURRETS, HITTABLE', detail: 'Star guns can now be shot out: turrets take damage, go dark when destroyed, and rebuild one at a time every thirty seconds. Tab targeting includes turrets, and bot captains differ in whether they hunt them.' },
   { date: '2026-10-24', ref: 'PR #65', title: 'FEEDBACK TEMPLATE FIX', detail: 'The feedback form’s first live send was refused because it named a template that doesn’t exist — the form now points at the mailbox’s real template, so notes should send.' },
   { date: '2026-10-24', ref: 'PR #63', title: 'FEEDBACK, DONATE, HOT FIX, AND TRACKS', detail: 'The feedback form now sends for real to the grower’s mailbox, the cabinet gains a donate button with one honest Ko-fi door, bots fire only when their nose points at the target and burn fuel exactly like players, and bots buy ship upgrades on their own favorite tracks — all in one batch, with the game staying free either way.' },
   { date: '2026-10-24', ref: 'PR #61', title: 'SOUND PREVIEW, BY NAME', detail: 'The sound preview in OPTIONS now shows each sound’s name as it plays: step back and forward through all eighteen voices, replay the one you are on, and tap a name to copy it — and HEAR ALL walks the same names as the full set plays.' },

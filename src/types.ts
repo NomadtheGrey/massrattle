@@ -171,9 +171,24 @@ export interface Mine {
  * derives from the star's size — see PHYSICS.STAR_DEFENSE.
  */
 export interface StarTurret {
+  /** Stable identity across frames: 'inner-0', 'inner-1',
+   *  'outer-0'..'outer-7'. The ladder rebuilds the list every
+   *  frame, so identity — not position — is what carries
+   *  HP/destroyed state across the merge (sim/turretState.ts). */
+  id: string;
   shell: 'inner' | 'outer';
   angle: number;
   tier: number;
+  /** Hit points, DRAFT max 60 (PHYSICS.STAR_DEFENSE.TURRET_MAX_HP).
+   *  Absent on a fresh ladder record = full health. */
+  hp?: number;
+  /** True once HP hits 0: the turret stops firing, stops being
+   *  targetable, and waits out the regen queue. */
+  destroyed?: boolean;
+  /** Loop-clock ms when it was destroyed — regen order is FIFO on
+   *  this stamp (first-destroyed first-restored). Order only; the
+   *  regen countdown itself is a duration, so it rides saves. */
+  destroyedAt?: number;
 }
 
 export interface Star extends GameObject {
@@ -196,12 +211,21 @@ export interface Star extends GameObject {
   ownerId: string;
   integrity: number; // 0 to 1
   /**
-   * The star's defense-ladder turrets. A deterministic function of the
-   * star's milestone count (turretsForMilestones in starDefense.ts) —
-   * the game loop reconciles this list to that function every frame,
-   * so it is never edited by hand and needs no save/sync bookkeeping.
+   * The star's defense-ladder turrets. Membership/order/tier are a
+   * deterministic function of the star's milestone count
+   * (turretsForMilestones in starDefense.ts) — the game loop
+   * reconciles this list to that function every frame, and the
+   * merge (reconcileTurrets in sim/turretState.ts) carries each
+   * turret's HP/destroyed state across by stable id. So the LADDER
+   * owns who exists; the STATE owns who is alive.
    */
   turrets: StarTurret[];
+  /** Turret regen countdown (ms) — the queue's clock: while any
+   *  turret on this star is destroyed it ticks down by frame dt;
+   *  at 0 the oldest destroyed turret restores and the countdown
+   *  resets (30 s PINNED) while any remain. A duration, not a
+   *  loop-clock stamp, so it rides solo saves exactly. */
+  turretRegenInMs?: number;
   lastHitTime?: number;
   /** CME timers (Slice 7), on the game loop's clock: next scheduled fire,
    * the end of the current charge telegraph, and the locked aim angle. */
