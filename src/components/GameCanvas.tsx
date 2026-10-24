@@ -4,6 +4,7 @@ import { COLORS, PHYSICS } from '../constants';
 import { BANK_WELL_MARGIN } from '../bank';
 import { shieldMaxFor, PD_RANGE } from '../loadout';
 import { turretRingRadius } from '../starDefense';
+import { turretAtPoint, turretTargetId, parseTurretTargetId, turretPos, TURRET_HIT_RADIUS } from '../sim/turretState';
 import { getUiOptions } from '../uiOptions';
 import { stealthAlphaFor, mineVisibleToViewer, isStealthShip } from '../sim/stealth';
 import { shipSprite, tintedShipSprite, SPRITE_SCALE } from '../shipSprites';
@@ -143,14 +144,18 @@ interface GameCanvasProps {
 }
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({ state, width, height, seatLabels, tutorialMarker, onSetTarget }) => {
-  // CLICK / TAP TARGETING (controls follow-on, 2026-10-22): a
-  // click names the nearest valid enemy under it — hostile,
-  // alive, undocked; stealth visibility is the sim's word (its
-  // setTarget validation clears what may not be locked). A
-  // click that names nothing clears the lock. Screen -> world
-  // inverts the camera translate exactly (no zoom in this
-  // canvas; the frame shake is ignored — a few px of jitter
-  // inside a generous pick radius).
+  // CLICK / TAP TARGETING (controls follow-on, 2026-10-22;
+  // turret pass, 2026-10-24): a click names the nearest valid
+  // enemy under it — hostile, alive, undocked; stealth
+  // visibility is the sim's word (its setTarget validation
+  // clears what may not be locked). Ships and turrets share
+  // the pick: the turret helper owns the turret half (hostile
+  // + alive only, nearest within radius wins) and the canvas
+  // takes whichever center is nearer. A click that names
+  // nothing clears the lock. Screen -> world inverts the
+  // camera translate exactly (no zoom in this canvas; the
+  // frame shake is ignored — a few px of jitter inside a
+  // generous pick radius).
   const handlePick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!onSetTarget) return;
     const wx = e.nativeEvent.offsetX - width / 2 + state.ship.pos.x;
@@ -165,7 +170,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ state, width, height, se
       const d = Math.hypot(rs.pos.x - wx, rs.pos.y - wy);
       if (d <= rs.size + 26 && (!best || d < best.dist)) best = { ownerId: seat.ownerId, dist: d };
     }
-    onSetTarget(best ? best.ownerId : null);
+    // Turret half: the helper names the nearest valid turret
+    // under the click (same +26 generosity as ships, over the
+    // sim's hit radius); its distance decides against the ship
+    // pick, so the nearer center wins either way.
+    const turretPick = turretAtPoint(state.seats, state.ship.ownerId, wx, wy, TURRET_HIT_RADIUS + 26);
+    let turretId: string | null = null;
+    let turretDist = 0;
+    if (turretPick) {
+      const tSeat = state.seats.find(se => se.ownerId === turretPick.starOwnerId);
+      const t = tSeat?.star.turrets?.find(tt => tt.id === turretPick.turretId);
+      if (tSeat && t) {
+        const tp = turretPos(tSeat.star, t);
+        turretDist = Math.hypot(tp.x - wx, tp.y - wy);
+        turretId = turretTargetId(turretPick.starOwnerId, turretPick.turretId);
+      }
+    }
+    if (turretId !== null && (!best || turretDist < best.dist)) {
+      onSetTarget(turretId);
+    } else {
+      onSetTarget(best ? best.ownerId : null);
+    }
   };
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Wrap-edge flash: a >2000-unit jump between frames can only be the
@@ -461,6 +486,30 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ state, width, height, se
         ctx.save();
         ctx.rotate(t.angle);
         ctx.translate(ring, 0);
+        if (t.destroyed) {
+          // WRECK (turret flags, 2026-10-24): a destroyed hub
+          // must never draw as live — near-black box, dim rim,
+          // no core, no barrel, an X scratch across the box.
+          // It stays visible (it regens in 30 s) but reads dead.
+          ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+          ctx.lineWidth = 3.5;
+          ctx.strokeRect(-hub / 2, -hub / 2, hub, hub);
+          ctx.fillStyle = '#0a0a0a';
+          ctx.fillRect(-hub / 2, -hub / 2, hub, hub);
+          ctx.strokeStyle = '#52525b';
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(-hub / 2, -hub / 2, hub, hub);
+          ctx.strokeStyle = '#3f3f46';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(-hub / 2, -hub / 2);
+          ctx.lineTo(hub / 2, hub / 2);
+          ctx.moveTo(hub / 2, -hub / 2);
+          ctx.lineTo(-hub / 2, hub / 2);
+          ctx.stroke();
+          ctx.restore();
+          return;
+        }
         // Contrast halo, then the dark box with its allegiance rim.
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
         ctx.lineWidth = 3.5;
@@ -1603,6 +1652,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ state, width, height, se
           ctx.lineTo(cx, cy);
           ctx.lineTo(cx, cy - sy * arm);
           ctx.stroke();
+        }
+      } else {
+        // Turret half (turret flags, 2026-10-24): a turret lock
+        // used to draw nothing (guarded, no crash). It now
+        // brackets the turret in the same amber language, sized
+        // to its hub + 12 with the same pulse. A destroyed
+        // turret never brackets — its lock clears sim-side.
+        const parsed = parseTurretTargetId(ship.targetId);
+        const starSeat = parsed ? (state.seats || []).find(se => se.ownerId === parsed.starOwnerId) : undefined;
+        const turret = starSeat?.star.turrets?.find(tt => tt.id === parsed?.turretId);
+        if (starSeat && turret && !turret.destroyed) {
+          const tp = turretPos(starSeat.star, turret);
+          const hub = 9 + Math.min(turret.tier, 4);
+          const rr = hub + 12 + Math.sin(nowMs / 280) * 2;
+          const arm = 9;
+          ctx.strokeStyle = '#ffb020';
+          ctx.lineWidth = 2;
+          for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+            const cx = tp.x + sx * rr;
+            const cy = tp.y + sy * rr;
+            ctx.beginPath();
+            ctx.moveTo(cx - sx * arm, cy);
+            ctx.lineTo(cx, cy);
+            ctx.lineTo(cx, cy - sy * arm);
+            ctx.stroke();
+          }
         }
       }
     }
