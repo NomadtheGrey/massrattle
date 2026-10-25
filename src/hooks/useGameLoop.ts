@@ -506,10 +506,15 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
 
       const ship = { ...prev.ship };
       let banked = prev.bankedScrap;
-      // Adam's pin: swapping costs 60 + 20 per tier beyond the first,
-      // priced on the INCOMING item's tier. Empty slot = free equip.
-      // Paid from the combined wallet like every other purchase.
-      if (current !== null) {
+      // SWAP FREE (Adam correction, 2026-10-25 — supersedes the
+      // pinned 60 + 20/tier fee for WEAPONS): switching owned guns
+      // costs nothing, anytime, anywhere — no wallet, no well
+      // gate (the fee's bank leg was the loop's only location
+      // involvement). Defense/hybrid swaps keep the old fee
+      // (60 + 20 per tier beyond the first, on the incoming
+      // item's tier, from the combined wallet). Empty slot =
+      // free equip, as before.
+      if (current !== null && slot !== 'weapon') {
         const payment = walletPay(prev.ship.carrying, prev.bankedScrap, swapCostForTier(owned), inTeamWell(prev.seats, prev.ship));
         if (!payment) return prev;
         ship.carrying = payment.carrying;
