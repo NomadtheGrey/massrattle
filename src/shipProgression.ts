@@ -30,6 +30,8 @@
  *   denied a track, the specialty line just goes higher).
  */
 
+import { PHYSICS } from './constants';
+
 export type ShipLine = 'fighter' | 'minelayer' | 'hauler' | 'drone' | 'cruiser';
 export type TypeTier = 1 | 2 | 3 | 4 | 5;
 
@@ -368,6 +370,19 @@ export const typeFor = (line: ShipLine | null, tier: TypeTier): ShipTypeDef =>
 /** Track caps for a ship's current line/tier (null line = SKIFF caps). */
 export const capsFor = (line: ShipLine | null, tier: TypeTier): TrackCaps =>
   typeFor(line, tier).trackCaps;
+
+/** One text of the hold law (display-vs-loop gap, 2026-10-25): regular hold capacity —
+ * BASE + cargo track + line cargoBonus. Every capacity read in the loop, the shop, the bot
+ * driver, and the HUD goes through here (or totalCapacityFor) — never an inline copy, so
+ * display = law by construction. The ship argument needs only line/tier/cargo track. */
+export const regularCapacityFor = (ship: { line: ShipLine | null; typeTier: TypeTier; upgrades: { cargo: number } }): number =>
+  PHYSICS.CARGO.BASE_CAPACITY + ship.upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS + typeFor(ship.line, ship.typeTier).cargoBonus;
+
+/** Total hold capacity: regular + the overload allowance. */
+export const totalCapacityFor = (ship: { line: ShipLine | null; typeTier: TypeTier; upgrades: { cargo: number } }): number => {
+  const regular = regularCapacityFor(ship);
+  return regular + Math.floor(regular * PHYSICS.CARGO.OVERLOAD_RATIO);
+};
 
 /** Price to climb from `fromTier` to the next type within `line`. */
 export const typeStepPrice = (line: ShipLine, fromTier: TypeTier): number =>

@@ -34,7 +34,7 @@
 
 import { PHYSICS } from '../constants';
 import { weaponStatsFor } from '../loadout';
-import { EXTRA_MOUNT_DAMAGE, typeFor, healCapPctFor, healRateFor } from '../shipProgression';
+import { EXTRA_MOUNT_DAMAGE, typeFor, totalCapacityFor, healCapPctFor, healRateFor } from '../shipProgression';
 import { isVisibleTo } from './stealth';
 import { repairFrame } from './repair';
 import { areHostile, type TeamSeatLike } from './teams';
@@ -165,16 +165,6 @@ const EMPTY_RESULT: BotStepResult = {
   collectedScrapIds: [],
   deliverAmount: 0,
   projectiles: [],
-};
-
-/** Total hold capacity for a ship, the loop's formula (cargo track +
- * line/type bonus, overload ratio applied to the total). */
-const holdCapacityFor = (ship: Ship): number => {
-  const regular =
-    PHYSICS.CARGO.BASE_CAPACITY +
-    ship.upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS +
-    typeFor(ship.line, ship.typeTier).cargoBonus;
-  return regular + Math.floor(regular * PHYSICS.CARGO.OVERLOAD_RATIO);
 };
 
 const angleLerp = (from: number, to: number, maxStep: number): number => {
@@ -337,7 +327,7 @@ export const stepBotShip = (
     deliverAmount: 0,
     projectiles: [],
   };
-  const capacity = holdCapacityFor(ship);
+  const capacity = totalCapacityFor(ship);
 
   // --- Decide the destination -------------------------------------
   // B1 POSTURES (RULED, ReadMeFiles/BOTS.md): flight judgment,
