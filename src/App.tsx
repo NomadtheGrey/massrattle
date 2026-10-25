@@ -358,6 +358,7 @@ export default function App() {
       {/* HUD Overlay */}
       <HUD 
         starMass={state.star.mass} 
+        starSize={state.star.size}
         velocity={shipVelocity} 
         glitch={state.glitchActive}
         carrying={state.ship.carrying}
@@ -369,6 +370,8 @@ export default function App() {
         maxShipHealth={state.ship.maxHealth}
         enemyIntegrity={state.enemyStar.integrity}
         enemyTotalInfused={state.enemyStar.totalScrapInfused}
+        enemyStarSize={state.enemyStar.size}
+        enemyStarMass={state.enemyStar.mass}
         myTeamId={net.room ? (net.mySeat?.teamId ?? null) : null}
         enemyTeamId={net.room ? (state.seats.find(seat => seat.ownerId === state.enemyStar.ownerId)?.teamId ?? null) : null}
         isShopOpen={state.isShopOpen}

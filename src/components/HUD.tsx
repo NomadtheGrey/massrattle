@@ -148,6 +148,7 @@ const stageFieldFor = (totalInfused: number): StageField => {
 
 interface HUDProps {
   starMass: number;
+  starSize: number;
   velocity: number;
   glitch: boolean;
   carrying: number;
@@ -165,6 +166,8 @@ interface HUDProps {
   myTeamId?: TeamId | null;
   enemyTeamId?: TeamId | null;
   enemyTotalInfused?: number;
+  enemyStarSize?: number;
+  enemyStarMass?: number;
   isShopOpen: boolean;
   useAnalogGauges: boolean;
   shipPos: { x: number; y: number };
@@ -248,6 +251,7 @@ interface HUDProps {
 
 export const HUD: React.FC<HUDProps> = ({ 
   starMass, 
+  starSize,
   velocity, 
   glitch, 
   carrying, 
@@ -261,6 +265,8 @@ export const HUD: React.FC<HUDProps> = ({
   myTeamId = null,
   enemyTeamId = null,
   enemyTotalInfused = 0,
+  enemyStarSize,
+  enemyStarMass,
   isShopOpen,
   useAnalogGauges,
   shipPos,
@@ -1018,7 +1024,23 @@ export const HUD: React.FC<HUDProps> = ({
               )}
               <div className="flex justify-between text-[10px] mb-1">
                 <span className="text-zinc-200 tracking-wider">STAR LIFECYCLE</span>
-                <span className="font-bold" style={{ color: stageColor }}>{STAGE_LABELS[stageState.stage]}</span>
+                <span className="font-bold flex items-center gap-1.5" style={{ color: stageColor }}><span className="inline-block w-2.5 h-2.5 rounded-[2px] border border-zinc-600" style={{ backgroundColor: stageColor }} />{STAGE_LABELS[stageState.stage]}</span>
+              </div>
+              {/* STAR BODY (Adam, 2026-10-25 — panel asymmetry):
+                  the field bodies render FIXED palettes at every
+                  stage (home white-core/orange, enemy pale-rose/
+                  dark-rose), so the panel is where a star's color,
+                  size, and mass must READ — a swatch, not just a
+                  colored word, plus explicit SIZE and MASS rows.
+                  Same rows on both blocks, so the readouts can't
+                  drift apart (the stageFieldFor doctrine). */}
+              <div className="flex justify-between text-[10px] mb-1">
+                <span className="text-zinc-300">SIZE</span>
+                <span className="text-zinc-200 font-bold">{Math.round(starSize)}U</span>
+              </div>
+              <div className="flex justify-between text-[10px] mb-1">
+                <span className="text-zinc-300">MASS</span>
+                <span className="text-zinc-200 font-bold">{Math.round(starMass)}</span>
               </div>
               <div className="flex justify-between text-[10px] mb-1">
                 <span className="text-zinc-300">TOTAL FED</span>
@@ -1065,8 +1087,20 @@ export const HUD: React.FC<HUDProps> = ({
               )}
               <div className="flex justify-between text-[10px] mb-1">
                 <span className="text-zinc-200 tracking-wider">ENEMY LIFECYCLE</span>
-                <span className="font-bold" style={{ color: enemyField.color }}>{STAGE_LABELS[enemyField.state.stage]}</span>
+                <span className="font-bold flex items-center gap-1.5" style={{ color: enemyField.color }}><span className="inline-block w-2.5 h-2.5 rounded-[2px] border border-zinc-600" style={{ backgroundColor: enemyField.color }} />{STAGE_LABELS[enemyField.state.stage]}</span>
               </div>
+              {enemyStarSize !== undefined && (
+                <div className="flex justify-between text-[10px] mb-1">
+                  <span className="text-zinc-300">SIZE</span>
+                  <span className="text-zinc-200 font-bold">{Math.round(enemyStarSize)}U</span>
+                </div>
+              )}
+              {enemyStarMass !== undefined && (
+                <div className="flex justify-between text-[10px] mb-1">
+                  <span className="text-zinc-300">MASS</span>
+                  <span className="text-zinc-200 font-bold">{Math.round(enemyStarMass)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-[10px] mb-1">
                 <span className="text-zinc-300">TOTAL FED</span>
                 <span className="text-zinc-200 font-bold">{enemyTotalInfused}U</span>
