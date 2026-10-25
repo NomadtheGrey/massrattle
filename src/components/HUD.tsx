@@ -538,6 +538,17 @@ export const HUD: React.FC<HUDProps> = ({
   const rangeHome = Math.round(Math.hypot(shipPos.x - starPos.x, shipPos.y - starPos.y));
   const rangeEnemy = Math.round(Math.hypot(shipPos.x - enemyStarPos.x, shipPos.y - enemyStarPos.y));
   const holdRegular = PHYSICS.CARGO.BASE_CAPACITY + upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS;
+  // OVERLOADED SPEED (Adam, 2026-10-25 — display ruling): when
+  // the hold passes regular capacity (the loop's overload zone:
+  // regular = base + cargo track + line bonus), the Thrust tile
+  // shows top speed / live speed, the live figure in HUD danger
+  // red. Live speed is the ship's actual velocity (already a HUD
+  // prop). The old speedMult figure died with the pinned 85/50
+  // load curve (loadFactorFor), which scales thrust, not the
+  // cap — so no computed degraded-top exists to show. (If Adam
+  // wants the red figure from the first scrap rather than the
+  // overload zone, this condition alone changes.)
+  const isOverloaded = carrying > (holdRegular + progType.cargoBonus);
   const holdTotal = holdRegular + Math.floor(holdRegular * PHYSICS.CARGO.OVERLOAD_RATIO);
   // Star growth readouts follow the RISING milestone costs (starGrowth.ts):
   // progress is scrap into the CURRENT milestone, judged against that
@@ -1780,7 +1791,7 @@ export const HUD: React.FC<HUDProps> = ({
           </div>
         </div>
         {[
-          { icon: '🚀', name: 'THRUST', base: PHYSICS.UPGRADE_COSTS.THRUST, lvl: upgrades.thrust, cap: caps.thrust, stat: `SPD ${(PHYSICS.MAX_VELOCITY + upgrades.thrust * PHYSICS.THRUST_SPD_STEP).toFixed(1)}` },
+          { icon: '🚀', name: 'THRUST', base: PHYSICS.UPGRADE_COSTS.THRUST, lvl: upgrades.thrust, cap: caps.thrust, stat: isOverloaded ? <>SPD {topSpeed.toFixed(1)} / <span className="text-red-500">{velocity.toFixed(1)}</span></> : `SPD ${topSpeed.toFixed(1)}` },
           { icon: '🕹️', name: 'TURN', base: PHYSICS.UPGRADE_COSTS.HANDLING, lvl: upgrades.handling, cap: caps.handling, stat: `${Math.round((PHYSICS.ROTATION_SPEED * progType.turnFactor + upgrades.handling * 0.005) * 60 * 180 / Math.PI)}°/S` },
           { icon: '🧲', name: 'VAC', base: PHYSICS.UPGRADE_COSTS.ATTRACTOR, lvl: upgrades.attractor, cap: caps.vac, stat: `${PHYSICS.BASE_ATTRACT_RADIUS + upgrades.attractor * 35}U` },
           { icon: '⚡', name: 'FUEL', base: PHYSICS.UPGRADE_COSTS.FUEL, lvl: upgrades.fuelCap, cap: caps.fuel, stat: `${maxFuel}` },
