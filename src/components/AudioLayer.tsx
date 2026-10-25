@@ -131,8 +131,18 @@ export function playVoice(type: VoiceType, loudness = 1): void {
   const v = Math.min(1, Math.max(0, loudness));
   switch (type) {
     case 'fire':
-      tone({ freq: 880, freqEnd: 220, type: 'square', dur: 0.09, vol: 0.10 * v });
-      noise({ dur: 0.06, vol: 0.05 * v, from: 4000, to: 800, type: 'bandpass' });
+      // CRACK (Adam, 2026-10-25 — 1-in-3-4 report): the old
+      // 90 ms blip at 170 ms cadence blurred into a buzz and
+      // the ear read only occasional shots. A Node lab through
+      // the REAL diff + the REAL playVoice proved the plumbing
+      // schedules one voice per shot (20 shots -> 19 voices;
+      // the gap is the harness's frame-0 shot, which no real
+      // player can take) — so the fix is voicing, not plumbing:
+      // a shorter, louder crack that ends well inside the
+      // cadence, so every shot reads discrete. Same gun pitch,
+      // same hierarchy (still below hit / explosion).
+      tone({ freq: 880, freqEnd: 220, type: 'square', dur: 0.05, vol: 0.16 * v });
+      noise({ dur: 0.04, vol: 0.08 * v, from: 4000, to: 800, type: 'bandpass' });
       break;
     case 'hit':
       tone({ freq: 130, freqEnd: 55, dur: 0.12, vol: 0.22 * v });
