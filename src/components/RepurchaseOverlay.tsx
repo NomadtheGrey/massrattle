@@ -1,4 +1,5 @@
 import React from 'react';
+import { BuybackPreviewLedger, type BuybackPreview } from './BuybackPreview';
 
 /**
  * Repurchase screen (UI lane, P2-5 death economy) — shown while the
@@ -44,11 +45,20 @@ interface RepurchaseOverlayProps {
    * the field this prop is simply absent and the panel behaves
    * exactly as before: the display is built dark, lit by the data. */
   respawnAt?: number | null;
+  /** AUTO-BUYBACK PREVIEW (dev pin, 2026-10-25): BG's
+   * previewBuyback result for this seat as it stands (pre-price);
+   * null on free floor / no snapshot / consumed snapshot, in
+   * which case the ledger renders nothing and the panel is
+   * exactly as before. Shown pre-press only by construction:
+   * pressing consumes the snapshot, so the preview nulls
+   * itself and the wait state replaces the offer. */
+  buybackPreview?: BuybackPreview | null;
 }
 
 export const RepurchaseOverlay: React.FC<RepurchaseOverlayProps> = ({
   deaths, bankedScrap, price, onRepurchase, onLeaveMatch, onForfeitMatch, onDismiss,
   respawnAt = null,
+  buybackPreview = null,
 }) => {
   // The countdown ticks on its own clock while the paid wait runs,
   // independent of how often the app happens to re-render.
@@ -115,6 +125,7 @@ export const RepurchaseOverlay: React.FC<RepurchaseOverlayProps> = ({
             The price is a cut of what's in your bank — it can never be more than you have, and at zero bank it's free.
           </p>
         )}
+        <BuybackPreviewLedger preview={buybackPreview} />
         {insurancePaid ? (
           <div className="w-full mt-4 py-3 rounded font-bold text-sm tracking-widest bg-[#33ff33]/15 border border-[#33ff33]/60 text-[#33ff33] font-mono">
             INSURANCE PAID — REDEPLOY IN {respawnClock}

@@ -17,7 +17,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { ChatPanel } from './components/ChatPanel';
 import { useNetClient, NetSessionContext } from './net/useNetClient';
 import { RepurchaseOverlay } from './components/RepurchaseOverlay';
-import { repurchasePriceFor, respawnWaitMsFor } from './sim/deathEconomy';
+import { repurchasePriceFor, respawnWaitMsFor, previewBuyback } from './sim/deathEconomy';
 import { escortKindOf, healCapPctFor } from './shipProgression';
 
 export default function App() {
@@ -160,6 +160,13 @@ export default function App() {
         onContinue: () => repurchaseShip(localOwnerId),
       }
     : null;
+  // AUTO-BUYBACK PREVIEW (dev pin, 2026-10-25): the Continue /
+  // repurchase forms show what the kit restores vs skips, priced.
+  // Preview only while shipless; previewBuyback is pure and
+  // nulls itself on free floor / no snapshot / consumed snapshot
+  // (post-press the wait UI replaces the offer, so a stale
+  // preview can never linger).
+  const buybackPreview = localSeat && !localSeat.ship ? previewBuyback(localSeat, state.drones) : null;
   // REPAIR TOP BUTTON (Adam, 2026-10-25 — quibble #2): the
   // in-play switch's state, same expressions HUD's old bottom
   // pill read — the button itself sits in the mode-pill row.
@@ -290,6 +297,7 @@ export default function App() {
           deaths={localSeat.deaths}
           bankedScrap={localSeat.bankedScrap}
           price={repurchasePriceFor(localSeat.bankedScrap, localSeat.deaths)}
+          buybackPreview={buybackPreview}
           onRepurchase={() => repurchaseShip(localSeat.ownerId)}
           onLeaveMatch={() => { net.leaveRoom(); setLobbyOpen(false); }}
           onForfeitMatch={() => { net.forfeitRoom(); setLobbyOpen(false); }}
@@ -344,6 +352,7 @@ export default function App() {
         totalScrapInfused={state.star.totalScrapInfused}
         onRestart={restart}
         soloContinue={soloContinue}
+        buybackPreview={buybackPreview}
       />
       
       {/* HUD Overlay */}

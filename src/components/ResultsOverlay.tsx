@@ -2,6 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Trophy, Skull, RefreshCw, LifeBuoy } from 'lucide-react';
 import { milestonesForInfused } from '../starGrowth';
+import { BuybackPreviewLedger, type BuybackPreview } from './BuybackPreview';
 
 /**
  * Solo Continue offer (Adam, 2026-10-25 — hull breach doors):
@@ -29,6 +30,7 @@ interface ResultsOverlayProps {
   totalScrapInfused: number;
   onRestart: () => void;
   soloContinue?: SoloContinueOffer | null;
+  buybackPreview?: BuybackPreview | null;
 }
 
 export const ResultsOverlay: React.FC<ResultsOverlayProps> = ({
@@ -37,7 +39,8 @@ export const ResultsOverlay: React.FC<ResultsOverlayProps> = ({
   teamScrap,
   totalScrapInfused,
   onRestart,
-  soloContinue = null
+  soloContinue = null,
+  buybackPreview = null,
 }) => {
   const show = isVictory || isGameOver;
   // Paid-wait countdown (RepurchaseOverlay's clock idiom):
@@ -139,6 +142,7 @@ export const ResultsOverlay: React.FC<ResultsOverlayProps> = ({
                       <div>MAP + PROGRESS KEPT — SAME MATCH, NOT A NEW ONE</div>
                       <div className="text-zinc-300 mt-1">CONTINUE COSTS {soloContinue.price === 0 ? 'FREE' : `${soloContinue.price}U`} · REDEPLOY IN ~{Math.ceil(soloContinue.waitMs / 1000)}S</div>
                     </div>
+                    <BuybackPreviewLedger preview={buybackPreview} />
                     <button
                       onClick={soloContinue.onContinue}
                       className="pitted-metal w-full py-4 font-bold flex items-center justify-center gap-2 group transition-all text-[#33ff33]"
