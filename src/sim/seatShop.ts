@@ -221,7 +221,7 @@ export const seatDepositBank = (seat: SeatSimState, ctx: SeatShopCtx): SeatShopC
 export const seatWithdrawBank = (seat: SeatSimState, ctx: SeatShopCtx): SeatShopChange | null => {
   const ship = seat.ship;
   if (!ship || !inTeamWell(ctx.seats, ship) || seat.bankedScrap <= 0) return null;
-  const regular = PHYSICS.CARGO.BASE_CAPACITY + ship.upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS + typeFor(ship.line, ship.typeTier).cargoBonus;
+  const regular = PHYSICS.CARGO.BASE_CAPACITY + ship.upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS;
   const total = regular + Math.floor(regular * PHYSICS.CARGO.OVERLOAD_RATIO);
   const moved = Math.min(Math.max(0, total - ship.carrying), seat.bankedScrap);
   if (moved <= 0) return null;

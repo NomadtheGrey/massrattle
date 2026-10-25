@@ -588,7 +588,7 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
     setState(prev => {
       if (!inTeamWell(prev.seats, prev.ship)) return prev; // banking happens at home
       if (prev.bankedScrap <= 0) return prev;
-      const regularCapacity = PHYSICS.CARGO.BASE_CAPACITY + prev.ship.upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS + typeFor(prev.ship.line, prev.ship.typeTier).cargoBonus;
+      const regularCapacity = PHYSICS.CARGO.BASE_CAPACITY + prev.ship.upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS;
       const totalCapacity = regularCapacity + Math.floor(regularCapacity * PHYSICS.CARGO.OVERLOAD_RATIO);
       const space = Math.max(0, totalCapacity - prev.ship.carrying);
       const moved = Math.min(space, prev.bankedScrap);
@@ -1864,17 +1864,20 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
           const stick = input.stick;
           const stickDist = stick ? Math.sqrt(stick.x * stick.x + stick.y * stick.y) : 0;
 
-          // Cargo Capacity (the line/type cargoBonus rides on top of the
-          // cargo track; the overload ratio applies to the total, as ever)
-          const regularCapacity = PHYSICS.CARGO.BASE_CAPACITY + s.upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS + typeFor(s.line, s.typeTier).cargoBonus;
+          // Cargo Capacity (Adam ruling, 2026-10-25): identical for every line —
+          // BASE + cargo track only, no line bonus; the overload ratio applies
+          // to the total, as ever. The 85/50 curve anchors (regular/total) are
+          // therefore uniform across lines at the same cargo level.
+          const regularCapacity = PHYSICS.CARGO.BASE_CAPACITY + s.upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS;
           const overloadCapacity = Math.floor(regularCapacity * PHYSICS.CARGO.OVERLOAD_RATIO);
           const totalCapacity = regularCapacity + overloadCapacity;
 
           // Pinned load curve (Adam, 2026-10-25): effective thrust speed 1.0 → 0.85 over
           // empty → regular, then 0.85 → 0.50 over regular → total. Single punishment:
           // this factor replaces the old speedMult AND the cargo-mass divisor (flat mass
-          // in physics.ts) — never both stacked. (regularCapacity still carries the
-          // line/type cargoBonus here — see BG's note to dev on UI's a4853df display ruling.)
+          // in physics.ts) — never both stacked. (regularCapacity is line-neutral now —
+          // the line cargo bonus was dropped by Adam's 2026-10-25 ruling, so the curve
+          // anchors are uniform across lines at the same cargo level.)
           const loadFactor = loadFactorFor(s.carrying, regularCapacity, totalCapacity);
 
           if (input.wantsThrust && s.fuel > PHYSICS.FUEL_CONSUMPTION) {
