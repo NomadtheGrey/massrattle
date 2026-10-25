@@ -13,6 +13,7 @@ import { useGameLoop } from './hooks/useGameLoop';
 import { inBankWell } from './bank';
 import { LobbyScreen, ShareCopyButtons } from './components/lobby/LobbyScreen';
 import { SoundLayer } from './components/AudioLayer';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { ChatPanel } from './components/ChatPanel';
 import { useNetClient, NetSessionContext } from './net/useNetClient';
 import { RepurchaseOverlay } from './components/RepurchaseOverlay';
@@ -197,6 +198,7 @@ export default function App() {
   }, []);
 
   return (
+    <ErrorBoundary>
     <NetSessionContext.Provider value={net}>
     <div ref={containerRef} className="crt-container w-full h-full flex items-center justify-center p-0 select-none touch-none">
       <SoundLayer
@@ -472,5 +474,6 @@ export default function App() {
           learned FIRE [F] or DECOY [X] — so it was retired. */}
     </div>
     </NetSessionContext.Provider>
+    </ErrorBoundary>
   );
 }
