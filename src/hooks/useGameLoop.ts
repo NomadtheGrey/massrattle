@@ -1651,14 +1651,21 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
         const hosting =
           !!frameSession && !!frameRoom && frameSession.isHost &&
           mpRoomRef.current === frameRoom.code;
-        // The local seat began this frame shipless in a hosted
-        // match: its ship died in an earlier frame and the death
+        // The local seat began this frame shipless: its ship died in an earlier frame and the death
         // economy holds the seat until repurchase. The top-level
         // ship is then only the wreck stand-in (see the death
         // sweep); the seat record carries the truth, and the
-        // rebuild below keeps it null.
+        // rebuild below keeps it null. SOLO TWIN OF #35 (Adam live
+        // bug, 2026-10-25): this used to be hosting-gated, so in
+        // solo the rebuild re-armed the seat with the dead
+        // stand-in every frame and the cascade re-taxed 25% +
+        // deaths+1 per frame until arrival — the bank wiped
+        // within ~1s of death. A nulled seat stays nulled in
+        // every mode; the arrival tick re-arms it directly
+        // (completeRespawn sets seat.ship), so this cannot
+        // strand a legitimate redeploy.
         const localSeatDead =
-          hosting && localIdx >= 0 && prevSeats[localIdx].ship === null;
+          localIdx >= 0 && prevSeats[localIdx].ship === null;
         const simSeats: SeatSimState[] = prevSeats.map((ps, i) => {
           const seat: SeatSimState = { ...ps };
           if (i === localIdx) {
