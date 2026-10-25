@@ -21,7 +21,7 @@ import type { StarStage } from '../net/protocol';
 import { STAGE_LABELS, TEAM_LABELS, TEAM_COLORS } from './lobby/lobbyTypes';
 import type { TeamId } from '../net/protocol';
 import { MechanicsGuide } from './MechanicsGuide';
-import { LOADOUT_ITEMS, getLoadoutItem, itemTierCost, swapCostForTier, MAX_ITEM_TIER, ArsenalCategory, shieldMaxFor, MOUNT_ACCESS, canMountWeapon, weaponClassFor, WEAPON_SELECT_ORDER, weaponIdForSelectSlot, type WeaponClass } from '../loadout';
+import { LOADOUT_ITEMS, getLoadoutItem, itemTierCost, swapCostForTier, MAX_ITEM_TIER, ArsenalCategory, shieldMaxFor, MOUNT_ACCESS, canMountWeapon, weaponClassFor, WEAPON_SELECT_ORDER, weaponIdForSelectSlot, weaponStatsFor, type WeaponClass } from '../loadout';
 import { frameMaxed, nextStep, trackStatus, unlockLines } from '../progressionStatus';
 import { SHIP_LINES, typeFor, capsFor, typeStepPrice, hullStepPrice, hullSizeFor, HULL_STEP_HEALTH, switchToll, DRONE_PRICE, autoGunCapFor, turretMountPriceFor, effectiveAutoGuns, DEFENSE_DRONE_PRICE, ESCORT_KIND_DEFS, ESCORT_KINDS, escortCapFor, escortWingSize, escortKindOf, canOrderWorkforce, healCapPctFor, healRateFor, type EscortKind, ShipLine, TypeTier, ShipTypeDef } from '../shipProgression';
 
@@ -628,6 +628,21 @@ export const HUD: React.FC<HUDProps> = ({
     setShopNotice(msg);
     if (shopNoticeTimer.current) window.clearTimeout(shopNoticeTimer.current);
     shopNoticeTimer.current = window.setTimeout(() => setShopNotice(null), 2800);
+  };
+  // STRIP NOTICE (Adam, 2026-10-25 — weapon-strip bug): the
+  // workshop's notice line is invisible in flight, and the
+  // strip's grey chips used to fail SILENTLY — a press on an
+  // unowned/unmountable slot selects nothing and nothing said
+  // so, which reads as 'clicking does nothing'. Same idiom as
+  // flashShopNotice (transient, 2800ms), rendered as a fixed
+  // pill just below the strip on desktop / below the ribbon
+  // on phones, so a refused press always says why.
+  const [stripNotice, setStripNotice] = React.useState<string | null>(null);
+  const stripNoticeTimer = React.useRef<number | null>(null);
+  const flashStripNotice = (msg: string) => {
+    setStripNotice(msg);
+    if (stripNoticeTimer.current) window.clearTimeout(stripNoticeTimer.current);
+    stripNoticeTimer.current = window.setTimeout(() => setStripNotice(null), 2800);
   };
   // SWITCH CONFIRMATION — THE FORCED SELL, AND THE ONE
   // REMAINING SHELVE (2026-10-22): a real hull change SELLS what
@@ -1646,6 +1661,12 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
       )}
 
+      {stripNotice && (
+        <div className="fixed top-[76px] md:top-[108px] left-1/2 -translate-x-1/2 z-[60] pointer-events-none">
+          <div className="hud-panel rounded border border-amber-700 bg-amber-950/40 px-3 py-1.5 font-mono text-[10px] sm:text-[11px] font-bold tracking-widest text-amber-300 text-center max-w-[92vw]">{stripNotice}</div>
+        </div>
+      )}
+
       <div className="fixed top-[104px] right-2 md:top-6 md:right-6 z-[54] pointer-events-none">
         <div className="hud-panel border border-zinc-800 px-2 py-1 font-mono text-[9px] sm:text-[10px] leading-none flex items-center gap-1.5 shadow-lg">
           <span><span className="text-zinc-500">PING</span> <span className="text-zinc-100 font-bold">{pingMs}MS</span></span>
@@ -1707,6 +1728,15 @@ export const HUD: React.FC<HUDProps> = ({
           const tier = def ? (arsenal[def.id] || 0) : 0;
           const isShield = slot === 'defense' && def?.id === 'deflector_shield';
           const isDecoy = slot === 'defense' && def?.id === 'decoy_beacon';
+          // HOLD-SHORT FLAG (Adam, 2026-10-25 — weapon-strip bug):
+          // a scrap-cost weapon with a hold that can't afford one
+          // shot fires NOTHING (mine: dropCount 0; guns: the volley
+          // breaks before mount 0) and nothing says so — which
+          // reads as 'the weapon can't be utilized'. The plate
+          // names the shortfall while it holds, so F's silence
+          // is explained before the press, not after.
+          const wStats = slot === 'weapon' && def ? weaponStatsFor(def.id, arsenal[def.id] || 0) : null;
+          const holdShort = !!wStats && (wStats.scrapCost || 0) > 0 && carrying < (wStats.scrapCost || 0);
           return (
             <div key={slot} className={`hud-panel px-1.5 py-0.5 rounded border text-center min-w-[56px] ${def ? 'border-[#33ff33]/50' : 'border-zinc-800'} ${stripDetailShown ? '' : 'max-md:hidden'}`}>
               <div className="text-[8px] sm:text-[9px] font-mono text-zinc-300 tracking-widest whitespace-nowrap">
@@ -1715,6 +1745,9 @@ export const HUD: React.FC<HUDProps> = ({
               <div className={`text-[8px] sm:text-[10px] font-mono font-bold uppercase leading-tight whitespace-nowrap max-w-[92px] truncate ${def ? 'text-[#33ff33]' : 'text-zinc-400'}`}>
                 {def ? `${def.icon} ${def.name}` : '— EMPTY —'}
               </div>
+              {holdShort && wStats && def && (
+                <div className="text-[7px] sm:text-[8px] font-mono text-amber-300 whitespace-nowrap">HOLD {carrying}U — NEED {wStats.scrapCost}U TO {def.id === 'mine_layer' ? 'LAY' : def.id === 'rail_lance' ? 'CHARGE' : 'FIRE'}</div>
+              )}
               {isDecoy && (
                 <div className="text-[7px] sm:text-[8px] font-mono text-pink-300 whitespace-nowrap">{decoyActive ? 'BEACON LIVE' : 'PRESS E / PILL'}</div>
               )}
@@ -1737,8 +1770,15 @@ export const HUD: React.FC<HUDProps> = ({
           const selected = loadout.weapon === wid;
           const verb = wid === 'mine_layer' ? 'LAY' : wid === 'rail_lance' ? 'CHARGE' : 'FIRE';
           return (
-            <button key={wid} onClick={() => onSelectWeaponSlot(i)}
-              className={`hud-panel px-1.5 py-0.5 rounded border text-center min-w-[34px] sm:min-w-[44px] pointer-events-auto touch-manipulation active:scale-95 ${selected ? 'border-[#33ff33] shadow-[0_0_8px_rgba(51,255,51,0.35)]' : selectable ? 'border-zinc-700' : 'border-zinc-800 opacity-45'}`}>
+            <button key={wid} onClick={() => {
+              // Grey-chip press used to fall through to the loop's
+              // select and die silently there (no-op on null) —
+              // the 'clicking does nothing' complaint. A refused
+              // press now says why; a live press selects as before.
+              if (selectable) onSelectWeaponSlot(i);
+              else flashStripNotice(!owned ? `SLOT ${i < 5 ? i + 1 : 'T'} EMPTY — NO WEAPON OWNED` : `CAN'T MOUNT ${(wdef?.name ?? 'THAT WEAPON').toUpperCase()} ON THIS HULL`);
+            }}
+              className={`hud-panel px-1.5 py-0.5 rounded border text-center min-w-[34px] sm:min-w-[44px] pointer-events-auto touch-manipulation active:scale-95 ${selected ? 'border-[#33ff33] bg-[#33ff33]/20 shadow-[0_0_12px_rgba(51,255,51,0.6)]' : selectable ? 'border-zinc-700' : 'border-zinc-800 opacity-45'}`}>
               <div className="text-[8px] sm:text-[9px] font-mono text-zinc-300 tracking-widest whitespace-nowrap">{i < 5 ? i + 1 : 'T'} · {wdef?.icon ?? '?'}</div>
               <div className={`text-[7px] sm:text-[8px] font-mono font-bold uppercase leading-tight whitespace-nowrap ${selected ? 'text-[#33ff33]' : selectable ? 'text-zinc-300' : 'text-zinc-500'}`}>
                 {selected ? `F · ${verb}` : owned ? (selectable ? <><span className="max-sm:hidden">READY</span><span className="sm:hidden">T{arsenal[wid]}</span></> : <><span className="max-sm:hidden">NO MOUNT</span><span className="sm:hidden">T{arsenal[wid]} ✕</span></>) : '—'}
