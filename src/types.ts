@@ -67,6 +67,13 @@ export interface Ship extends GameObject {
   ownerId: string;
   /** performance.now() timestamp before which the equipped weapon cannot fire again. */
   fireReadyAt?: number;
+  /** WEAPON SILENCE (Adam, 2026-10-25): Date.now() stamp of the
+   * last fire attempt that yielded nothing for a dry hold (mine
+   * dropCount 0, or a volley that never fired) — the HUD reads
+   * the LOCAL seat's only, 2800ms window. Rate-limited at the
+   * stamp site (one per window while F is held). Scrubbed by
+   * soloSave like fireReadyAt: a refusal flash never persists. */
+  fireRefusedAt?: number;
   /** SUBMARINE (src/sim/stealth.ts): SECONDS REMAINING of the
    * periscope reveal — firing or laying mines while cloaked sets
    * it to ~2.0 and the sim counts it down per frame (Adam's
