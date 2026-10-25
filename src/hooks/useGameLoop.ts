@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { GameState, SeatSimState, Star, Vector2D, Ship, Scrap } from '../types';
 import { PHYSICS, COLORS } from '../constants';
-import { getLoadoutItem, itemTierCost, swapCostForTier, MAX_ITEM_TIER, canMountWeapon, mountableLoadout , weaponIdForSelectSlot } from '../loadout';
+import { getLoadoutItem, itemTierCost, swapCostForTier, MAX_ITEM_TIER, canMountWeapon, mountableLoadout , weaponIdForSelectSlot, selectRefusalWhy } from '../loadout';
 import { inBankWell } from '../bank';
 import { infuseStar, milestonesForInfused } from '../starGrowth';
 import { ownerIdForSeat, starIdForSeat } from '../sim/ownership';
@@ -194,6 +194,15 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
   // step state for the HUD's coach card, refs for the frame gates
   // (captain parking, save suppression), baselines per step entry.
   const [tutorial, setTutorial] = useState<{ active: boolean; step: number; done: boolean }>(() => ({ active: tutorialBootRef.current === true, step: 0, done: false }));
+  // WEAPON SILENCE (Adam, 2026-10-25): the latest refused select
+  // press (key path 1-5/T on a grey slot). Loop-local React
+  // state, NOT game state — a guest's game-state stamp would be
+  // overwritten by the next host snapshot within a frame, while
+  // this survives to the local HUD. Returned to App; the HUD
+  // renders it in the strip pill on a 2800ms window. Null =
+  // no refusal outstanding (callers never clear it; the window
+  // expires it).
+  const [selectRefusal, setSelectRefusal] = useState<{ at: number; slot: number; why: 'empty' | 'mount' } | null>(null);
   const tutorialActiveRef = useRef(tutorial.active);
   const tutorialStepRef = useRef(0);
   const tutorialDoneRef = useRef(false);
@@ -597,10 +606,17 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
   // the owned/installed gates, then runs the ordinary equip
   // verb, swap fee on change included; on a guest the equip
   // verb's own intent path carries it to the host. A press on
-  // a greyed cell (unowned, unmountable) selects nothing.
+  // a greyed cell (unowned, unmountable) selects nothing — and
+  // now SAYS SO: the null case stamps selectRefusal for the HUD
+  // instead of dying silently (the click path renders its own
+  // notice; this is the key path's voice).
   const selectWeaponSlot = useCallback((slotIndex: number) => {
     const itemId = weaponIdForSelectSlot(stateRef.current.ship, slotIndex);
     if (itemId) equipItem(itemId);
+    else {
+      const why = selectRefusalWhy(stateRef.current.ship, slotIndex);
+      if (why) setSelectRefusal({ at: Date.now(), slot: slotIndex, why });
+    }
   }, [equipItem]);
 
   // TARGET LOCKS (CONTROLS.md follow-on): Tab cycles the lock,
@@ -2010,6 +2026,13 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
                     ownerId: s.ownerId,
                   });
                 }
+              } else if (cost > 0 && Date.now() - (s.fireRefusedAt ?? 0) > 2800) {
+                // WEAPON SILENCE (Adam, 2026-10-25): a mine press
+                // with a dry hold used to do NOTHING — no mine, no
+                // cooldown, no sound, no word. Stamp the refusal
+                // (rate-limited to one per 2800ms window while F is
+                // held); the HUD reads the local seat's stamp.
+                s.fireRefusedAt = Date.now();
               }
             } else {
               // HARD POINTS (Phase 3): the equipped weapon fires from
@@ -2064,6 +2087,13 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
                 // PERISCOPE (ruled, src/sim/stealth.ts): firing
                 // while cloaked surfaces the submarine.
                 if (isStealthShip(s)) s.cloakReveal = PERISCOPE_REVEAL_S;
+              } else if (cost > 0 && Date.now() - (s.fireRefusedAt ?? 0) > 2800) {
+                // WEAPON SILENCE (Adam, 2026-10-25): a volley
+                // that never fired — the hold could not afford
+                // even mount 0 — used to die silently (no shot,
+                // no cooldown, no sound, no word). Same stamp,
+                // same window, as the mine refusal above.
+                s.fireRefusedAt = Date.now();
               }
             }
           }
@@ -3000,6 +3030,7 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
     buyItem,
     equipItem,
     selectWeaponSlot,
+    selectRefusal,
     cycleTarget,
     setTarget,
     buyType,
