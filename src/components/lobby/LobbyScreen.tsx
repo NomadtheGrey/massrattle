@@ -406,7 +406,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
     // explain — the suffix-era block that lived here was removed
     // with the law that created it.
     return (
-      <div className="fixed inset-0 z-[100] overflow-y-auto glass-modal text-[#33ff33] flex justify-center p-3 sm:p-6">
+      <div className="fixed inset-0 z-[100] overflow-y-auto glass-modal text-[#33ff33] flex justify-center items-start p-3 sm:p-6">
       {closeButton}
         <div className="w-full max-w-md md:max-w-3xl flex gap-4 items-start">
         {/* Left margin: field notes (desktop); phones get the same
@@ -423,6 +423,28 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
               {room.name || 'UNNAMED ROOM'} · {room.starCount} STARS · {room.private ? 'PRIVATE — CODE/LINK ONLY' : 'PUBLIC'}
             </div>
           </div>
+
+          {/* START MATCH AT TOP (Adam, 2026-10-25 — modal-height
+              fix): the host's start button used to sit below
+              seats + chat + team panel, so on a short viewport
+              it scrolled off-screen and couldn't be found. It
+              now sits directly under the room code — reachable
+              on load at any height. The bottom keeps the phase
+              note + leave buttons. */}
+          {room.phase === 'lobby' && (
+            iAmHost ? (
+              <button
+                onClick={callbacks.onStart}
+                className="cta-go w-full py-3.5 rounded font-bold text-sm tracking-widest active:scale-[0.98] touch-manipulation"
+              >
+                ▶ START MATCH
+              </button>
+            ) : (
+              <div className="hud-panel w-full py-3 rounded text-center text-[11px] font-mono text-zinc-400 border border-zinc-800">
+                WAITING FOR THE HOST TO START…
+              </div>
+            )
+          )}
 
           {errorBanner}
           {notice && (
@@ -487,20 +509,6 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
             Progression is per match — every caretaker starts with a fresh frame.
           </p>
 
-          {room.phase === 'lobby' && (
-            iAmHost ? (
-              <button
-                onClick={callbacks.onStart}
-                className="cta-go w-full py-3.5 rounded font-bold text-sm tracking-widest active:scale-[0.98] touch-manipulation"
-              >
-                ▶ START MATCH
-              </button>
-            ) : (
-              <div className="hud-panel w-full py-3 rounded text-center text-[11px] font-mono text-zinc-400 border border-zinc-800">
-                WAITING FOR THE HOST TO START…
-              </div>
-            )
-          )}
           {room.phase !== 'lobby' && (
             <div className="hud-panel w-full py-3 rounded text-center text-[11px] font-mono text-zinc-400 border border-zinc-800 uppercase">
               MATCH {room.phase} — THE GAME SCREEN HAS THE CONTROLS
@@ -532,7 +540,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
 
   /* ------------------------------ ENTRY VIEW ----------------------------- */
   return (
-    <div className="fixed inset-0 z-[100] overflow-y-auto glass-modal text-[#33ff33] flex justify-center p-3 sm:p-6">
+    <div className="fixed inset-0 z-[100] overflow-y-auto glass-modal text-[#33ff33] flex justify-center items-start p-3 sm:p-6">
       {closeButton}
       <div className="w-full max-w-md flex flex-col gap-4">
         <div className="text-center mt-2">
