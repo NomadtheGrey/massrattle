@@ -23,7 +23,7 @@ import type { TeamId } from '../net/protocol';
 import { MechanicsGuide } from './MechanicsGuide';
 import { LOADOUT_ITEMS, getLoadoutItem, itemTierCost, swapCostForTier, MAX_ITEM_TIER, ArsenalCategory, shieldMaxFor, MOUNT_ACCESS, canMountWeapon, weaponClassFor, WEAPON_SELECT_ORDER, weaponIdForSelectSlot, weaponStatsFor, type WeaponClass } from '../loadout';
 import { frameMaxed, nextStep, trackStatus, unlockLines } from '../progressionStatus';
-import { SHIP_LINES, typeFor, capsFor, typeStepPrice, hullStepPrice, hullSizeFor, HULL_STEP_HEALTH, switchToll, DRONE_PRICE, autoGunCapFor, turretMountPriceFor, effectiveAutoGuns, DEFENSE_DRONE_PRICE, ESCORT_KIND_DEFS, ESCORT_KINDS, escortCapFor, escortWingSize, escortKindOf, canOrderWorkforce, healCapPctFor, healRateFor, type EscortKind, ShipLine, TypeTier, ShipTypeDef } from '../shipProgression';
+import { SHIP_LINES, typeFor, regularCapacityFor, totalCapacityFor, capsFor, typeStepPrice, hullStepPrice, hullSizeFor, HULL_STEP_HEALTH, switchToll, DRONE_PRICE, autoGunCapFor, turretMountPriceFor, effectiveAutoGuns, DEFENSE_DRONE_PRICE, ESCORT_KIND_DEFS, ESCORT_KINDS, escortCapFor, escortWingSize, escortKindOf, canOrderWorkforce, healCapPctFor, healRateFor, type EscortKind, ShipLine, TypeTier, ShipTypeDef } from '../shipProgression';
 
 // One-line summary of what a type's frame DOES, read off its capability
 // fields — the workshop sells the special in the type's own numbers.
@@ -537,19 +537,22 @@ export const HUD: React.FC<HUDProps> = ({
   const missionClock = `${Math.floor(missionSec / 60)}:${String(missionSec % 60).padStart(2, '0')}`;
   const rangeHome = Math.round(Math.hypot(shipPos.x - starPos.x, shipPos.y - starPos.y));
   const rangeEnemy = Math.round(Math.hypot(shipPos.x - enemyStarPos.x, shipPos.y - enemyStarPos.y));
-  const holdRegular = PHYSICS.CARGO.BASE_CAPACITY + upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS;
+  // Shared hold law (9b6135f): capacity comes from
+  // regularCapacityFor/totalCapacityFor in shipProgression —
+  // never an inline copy, so display = law by construction.
+  const holdRegular = regularCapacityFor(ship);
   // OVERLOADED SPEED (Adam, 2026-10-25 — display ruling): when
-  // the hold passes regular capacity (the loop's overload zone:
-  // regular = base + cargo track + line bonus), the Thrust tile
-  // shows top speed / live speed, the live figure in HUD danger
-  // red. Live speed is the ship's actual velocity (already a HUD
-  // prop). The old speedMult figure died with the pinned 85/50
-  // load curve (loadFactorFor), which scales thrust, not the
-  // cap — so no computed degraded-top exists to show. (If Adam
-  // wants the red figure from the first scrap rather than the
-  // overload zone, this condition alone changes.)
-  const isOverloaded = carrying > (holdRegular + progType.cargoBonus);
-  const holdTotal = holdRegular + Math.floor(holdRegular * PHYSICS.CARGO.OVERLOAD_RATIO);
+  // the hold passes regular capacity (the loop's overload zone),
+  // the Thrust tile shows top speed / live speed, the live
+  // figure in HUD danger red. Live speed is the ship's actual
+  // velocity (already a HUD prop). The old speedMult figure died
+  // with the pinned 85/50 load curve (loadFactorFor), which
+  // scales thrust, not the cap — so no computed degraded-top
+  // exists to show. (If Adam wants the red figure from the first
+  // scrap rather than the overload zone, this condition alone
+  // changes.)
+  const isOverloaded = carrying > holdRegular;
+  const holdTotal = totalCapacityFor(ship);
   // Star growth readouts follow the RISING milestone costs (starGrowth.ts):
   // progress is scrap into the CURRENT milestone, judged against that
   // milestone's own cost — e.g. 40/125 while working on M2, not x/100.
@@ -1021,7 +1024,7 @@ export const HUD: React.FC<HUDProps> = ({
               animate={{ width: `${(fuel / maxFuel) * 100}%` }}
             />
           </div>
-          <span className="text-pink-400 font-bold">CARGO {carrying}/{PHYSICS.CARGO.BASE_CAPACITY + upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS}</span>
+          <span className="text-pink-400 font-bold">CARGO {carrying}/{regularCapacityFor(ship)}</span>
         </div>
       </header>
 
@@ -1206,7 +1209,7 @@ export const HUD: React.FC<HUDProps> = ({
                 </div>
               </div>
               {velocity > 4 && <p className="text-red-400">[WARN] SPEED EXCEEDS BUFFER</p>}
-              {carrying > (PHYSICS.CARGO.BASE_CAPACITY + upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS) && <p className="text-yellow-400">[WARN] CARGO OVERLOAD</p>}
+              {carrying > regularCapacityFor(ship) && <p className="text-yellow-400">[WARN] CARGO OVERLOAD</p>}
               {carrying > 0 && <p className="text-pink-400 font-bold">[INFO] SCRAP LOAD: {carrying}U</p>}
               <p className="text-cyan-400 font-bold bg-cyan-950/40 px-1 border-l-2 border-cyan-500">[FED] {teamScrap}U DELIVERED</p>
               {fuel < 20 && <p className="text-red-500 animate-pulse font-bold">[ERR] FUEL DEPLETED</p>}
@@ -1296,7 +1299,7 @@ export const HUD: React.FC<HUDProps> = ({
                   value={carrying} 
                   max={holdTotal} 
                   label="C-MASS" 
-                  color={carrying > (PHYSICS.CARGO.BASE_CAPACITY + upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS) ? "#f97316" : "#06b6d4"} 
+                  color={carrying > regularCapacityFor(ship) ? "#f97316" : "#06b6d4"} 
                 />
               </div>
             ) : (
@@ -1404,8 +1407,8 @@ export const HUD: React.FC<HUDProps> = ({
               <div className="embossed-label text-pink-300 text-[9px] whitespace-nowrap">Cargo Manifest</div>
               <div className="text-[10px] font-mono font-bold text-pink-400 ml-1">
                 {(() => {
-                  const reg = PHYSICS.CARGO.BASE_CAPACITY + upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS;
-                  const ovr = Math.floor(reg * PHYSICS.CARGO.OVERLOAD_RATIO);
+                  const reg = regularCapacityFor(ship);
+                  const ovr = totalCapacityFor(ship) - reg;
                   if (carrying > reg) {
                     return `${reg}/${reg} [+${carrying - reg}/${ovr}]`;
                   }
@@ -1415,8 +1418,8 @@ export const HUD: React.FC<HUDProps> = ({
             </div>
             <div className="flex-grow flex items-center justify-center min-h-[80px] bg-black/40 rounded border border-zinc-900/50 my-1 overflow-hidden p-1.5 shadow-inner">
               {(() => {
-                const regularCap = PHYSICS.CARGO.BASE_CAPACITY + upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS;
-                const overloadCap = Math.floor(regularCap * PHYSICS.CARGO.OVERLOAD_RATIO);
+                const regularCap = regularCapacityFor(ship);
+                const overloadCap = totalCapacityFor(ship) - regularCap;
                 const totalSlots = regularCap + overloadCap;
                 
                 const containerW = 170;
@@ -1470,7 +1473,7 @@ export const HUD: React.FC<HUDProps> = ({
                 );
               })()}
             </div>
-            {carrying > (PHYSICS.CARGO.BASE_CAPACITY + upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS) && (
+            {carrying > regularCapacityFor(ship) && (
               <div className="text-[8px] text-amber-500 animate-pulse font-bold uppercase tracking-tighter leading-none mt-1 text-center">
                 WARNING: HULL INTEGRITY COMPROMISED BY CARGO LOAD
               </div>
@@ -1795,7 +1798,7 @@ export const HUD: React.FC<HUDProps> = ({
           { icon: '🕹️', name: 'TURN', base: PHYSICS.UPGRADE_COSTS.HANDLING, lvl: upgrades.handling, cap: caps.handling, stat: `${Math.round((PHYSICS.ROTATION_SPEED * progType.turnFactor + upgrades.handling * 0.005) * 60 * 180 / Math.PI)}°/S` },
           { icon: '🧲', name: 'VAC', base: PHYSICS.UPGRADE_COSTS.ATTRACTOR, lvl: upgrades.attractor, cap: caps.vac, stat: `${PHYSICS.BASE_ATTRACT_RADIUS + upgrades.attractor * 35}U` },
           { icon: '⚡', name: 'FUEL', base: PHYSICS.UPGRADE_COSTS.FUEL, lvl: upgrades.fuelCap, cap: caps.fuel, stat: `${maxFuel}` },
-          { icon: '📦', name: 'HOLD', base: PHYSICS.UPGRADE_COSTS.CARGO, lvl: upgrades.cargo, cap: caps.cargo, stat: `${PHYSICS.CARGO.BASE_CAPACITY + upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS}U` },
+          { icon: '📦', name: 'HOLD', base: PHYSICS.UPGRADE_COSTS.CARGO, lvl: upgrades.cargo, cap: caps.cargo, stat: `${regularCapacityFor(ship)}U` },
         ].map(t => (
           <div key={t.name} className={`hud-panel px-1.5 py-0.5 rounded border border-zinc-800 text-center min-w-[56px] ${stripDetailShown ? '' : 'max-md:hidden'}${t.name === 'VAC' ? spot('vac') : ''}`}>
             <div className="text-[8px] sm:text-[9px] font-mono text-zinc-300 tracking-widest whitespace-nowrap">{t.icon}<span className="max-sm:hidden"> {t.name} · L{t.lvl}/{t.cap}</span>{t.lvl >= t.cap ? <span className="text-zinc-500"> MAX</span> : <span className="text-amber-300"> ⬆{trackNextCost(t.base, t.lvl)}U</span>}</div>
