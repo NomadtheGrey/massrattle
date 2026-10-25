@@ -26,7 +26,7 @@
 import { PHYSICS } from '../constants';
 import type { EscortShip, Harvester, SeatSimState, Ship, Star } from '../types';
 import {
-  typeFor, capsFor, regularCapacityFor, typeStepPrice, hullStepPrice, hullSizeFor, HULL_STEP_HEALTH,
+  typeFor, capsFor, regularCapacityFor, totalCapacityFor, typeStepPrice, hullStepPrice, hullSizeFor, HULL_STEP_HEALTH,
   switchToll, autoGunCapFor, turretMountPriceFor, DRONE_PRICE, DEFENSE_DRONE_PRICE,
   DRONE_MAX_HEALTH, ESCORT_KIND_DEFS, escortCapFor, escortKindOf, canOrderWorkforce,
   type ShipLine, type TypeTier, type EscortKind,
@@ -222,7 +222,7 @@ export const seatWithdrawBank = (seat: SeatSimState, ctx: SeatShopCtx): SeatShop
   const ship = seat.ship;
   if (!ship || !inTeamWell(ctx.seats, ship) || seat.bankedScrap <= 0) return null;
   const regular = regularCapacityFor(ship);
-  const total = regular + Math.floor(regular * PHYSICS.CARGO.OVERLOAD_RATIO);
+  const total = totalCapacityFor(ship);
   const moved = Math.min(Math.max(0, total - ship.carrying), seat.bankedScrap);
   if (moved <= 0) return null;
   seat.bankedScrap -= moved;

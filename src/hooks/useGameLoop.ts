@@ -58,7 +58,7 @@ import { appendEventRecords, EventFeedEntry } from '../sim/eventFeed';
 import { turretsForMilestones, turretRingRadius, turretDamageFor, turretFireChanceFor, turretAngleAt, targetInTurretArc, applyDeliveryHeal } from '../starDefense';
 import { reconcileTurrets, stepTurretRegen, damageTurret, turretPos, TURRET_POD_DAMAGE, TURRET_HIT_RADIUS } from '../sim/turretState';
 import { weaponStatsFor, shieldMaxFor, shieldRechargePerFrame, armorHullFor, armorThrustFactor, PD_RANGE, PD_COOLDOWN_MS, pdDamageFor, decoyHealthFor, decoyLifeFramesFor, gravFactorFor, thornDamageFor, aegisAbsorbFor } from '../loadout';
-import { ShipLine, TypeTier, DRONE_MAX_HEALTH, typeFor, capsFor, regularCapacityFor, typeStepPrice, hullStepPrice, hullSizeFor, HULL_STEP_HEALTH, switchToll, DRONE_PRICE, DEFENSE_DRONE_PRICE, EXTRA_MOUNT_DAMAGE, AUTO_GUN, autoGunCapFor, effectiveAutoGuns, turretMountPriceFor, ESCORT_KIND_DEFS, escortCapFor, escortKindOf, canOrderWorkforce, healCapPctFor, healRateFor, type EscortKind } from '../shipProgression';
+import { ShipLine, TypeTier, DRONE_MAX_HEALTH, typeFor, capsFor, regularCapacityFor, totalCapacityFor, typeStepPrice, hullStepPrice, hullSizeFor, HULL_STEP_HEALTH, switchToll, DRONE_PRICE, DEFENSE_DRONE_PRICE, EXTRA_MOUNT_DAMAGE, AUTO_GUN, autoGunCapFor, effectiveAutoGuns, turretMountPriceFor, ESCORT_KIND_DEFS, escortCapFor, escortKindOf, canOrderWorkforce, healCapPctFor, healRateFor, type EscortKind } from '../shipProgression';
 
 /* attractRadiusForShip moved to src/sim/seatShop.ts (B2) — one text of the law for the local verbs, the bot policy, and guest intent consumption. */
 
@@ -589,7 +589,7 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
       if (!inTeamWell(prev.seats, prev.ship)) return prev; // banking happens at home
       if (prev.bankedScrap <= 0) return prev;
       const regularCapacity = regularCapacityFor(prev.ship);
-      const totalCapacity = regularCapacity + Math.floor(regularCapacity * PHYSICS.CARGO.OVERLOAD_RATIO);
+      const totalCapacity = totalCapacityFor(prev.ship);
       const space = Math.max(0, totalCapacity - prev.ship.carrying);
       const moved = Math.min(space, prev.bankedScrap);
       if (moved <= 0) return prev;
@@ -1867,8 +1867,7 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
           // Cargo Capacity comes from the shared helper (shipProgression) — one text of
           // the law, so display = law; the overload ratio applies to the total, as ever.
           const regularCapacity = regularCapacityFor(s);
-          const overloadCapacity = Math.floor(regularCapacity * PHYSICS.CARGO.OVERLOAD_RATIO);
-          const totalCapacity = regularCapacity + overloadCapacity;
+          const totalCapacity = totalCapacityFor(s);
 
           // Pinned load curve (Adam, 2026-10-25): effective thrust speed 1.0 → 0.85 over
           // empty → regular, then 0.85 → 0.50 over regular → total. Single punishment:
