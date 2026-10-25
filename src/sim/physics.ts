@@ -124,6 +124,19 @@ export interface ShipPhysicsResult {
  * With flat cargo mass, the factor IS the effective-speed fraction: terminal = 1.875 × factor.
  * Single punishment: this is the only cargo penalty anywhere in the physics step.
  */
+/**
+ * SHIP STAR-HEALING (Adam, 2026-10-25): the HP a ship regains from its friendly star
+ * in one frame — DRAFT PHYSICS.STAR_HEAL_PER_SEC (0.5 HP/s), capped at maxHealth, zero
+ * outside a friendly well or at full health. A separate source from hold-scrap repair
+ * (the two stack; independent of the repair toggle). The loop supplies the well test
+ * (inTeamWell: same-team star effectiveRadius + 280 — the game's existing "at a
+ * friendly star" zone, no new range number).
+ */
+export const starHealAmount = (health: number, maxHealth: number, inFriendlyWell: boolean): number => {
+  if (!inFriendlyWell || health >= maxHealth) return 0;
+  return Math.min(maxHealth - health, PHYSICS.STAR_HEAL_PER_SEC / 60);
+};
+
 export const loadFactorFor = (carrying: number, regularCapacity: number, totalCapacity: number): number => {
   const atCap = PHYSICS.CARGO.LOAD_FACTOR_AT_CAPACITY;
   const atTotal = PHYSICS.CARGO.LOAD_FACTOR_AT_TOTAL;

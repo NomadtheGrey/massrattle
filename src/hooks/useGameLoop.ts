@@ -15,7 +15,7 @@ import {
   type SimEvent,
 } from '../sim/simEvents';
 import { DEBUG_ARMED } from '../debug';
-import { stepStarBurn, stepShipPhysics, loadFactorFor, ShipPhysicsInputs } from '../sim/physics';
+import { stepStarBurn, stepShipPhysics, loadFactorFor, starHealAmount, ShipPhysicsInputs } from '../sim/physics';
 import { createMatch, shipSpawnPosition } from '../sim/matchAssembly';
 import { loadSoloGame, saveSoloGame, clearSoloGame } from '../soloSave';
 import { TUTORIAL_FLAG_KEY, TUTORIAL_STEP_DEFS, TUTORIAL_STIPEND, TEETH_INDEX, captureBaseline, type TutorialBaseline } from '../tutorial';
@@ -1876,6 +1876,15 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
           // includes the line cargoBonus, which stays per Adam's 2026-10-25 retraction —
           // so the curve anchors are per-line, not uniform.)
           const loadFactor = loadFactorFor(s.carrying, regularCapacity, totalCapacity);
+
+          // SHIP STAR-HEALING (Adam, 2026-10-25): a ship in a friendly well regains a
+          // tiny bit of hull from the star (DRAFT 0.5 HP/s via starHealAmount, capped
+          // at maxHealth) — a separate source from hold-scrap repair, so the two stack;
+          // independent of the repair toggle (it spends no hold scrap). Bots inherit
+          // (the host loop runs every seat's ship); docked ships heal too (they are
+          // at the star by definition). Range = the well (inTeamWell) — the game's
+          // existing "at a friendly star" zone, no new range number.
+          s.health = Math.min(s.maxHealth, s.health + starHealAmount(s.health, s.maxHealth, inTeamWell(prev.seats, s)));
 
           if (input.wantsThrust && s.fuel > PHYSICS.FUEL_CONSUMPTION) {
             s.thrust = true;

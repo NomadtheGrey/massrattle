@@ -4,6 +4,11 @@ export const PHYSICS = {
   THRUST_POWER: 0.3,
   ROTATION_SPEED: 0.025,
   SHIP_MASS: 4.0,
+  // SHIP STAR-HEALING (Adam, 2026-10-25): a ship in a friendly well regains a tiny
+  // bit of hull from the star — DRAFT 0.5 HP/s, capped at maxHealth, a separate source
+  // from hold-scrap repair (the two stack; independent of the repair toggle, it spends
+  // no hold scrap). Adam corrects the rate if wrong.
+  STAR_HEAL_PER_SEC: 0.5,
   MIN_DIST_STAR: 30,
   DELIVERY_RADIUS: 80,
   MAX_VELOCITY: 8.0, // SKIFF SPD (Adam, 2026-10-25 — pinned by
