@@ -41,6 +41,7 @@ import { stepCme } from '../sim/cme';
 import { computeStandings } from '../sim/standings';
 import { areHostile, areTeammates } from '../sim/teams';
 import { applyDeathLoss, botRepurchaseDue, completeRespawn, respawnDue, tryRepurchase } from '../sim/deathEconomy';
+import { snapshotDeadShip, spawnBuybackDrones } from '../sim/autoBuyback';
 import { walletPay, inTeamWell, attractRadiusForShip } from '../sim/seatShop';
 import { stepBotEconomy } from '../sim/botEconomy';
 import { isValidTarget, nextTargetId, stepTargetLocks } from '../sim/targeting';
@@ -1043,7 +1044,7 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
       const idx = prev.seats.findIndex(s => s.ownerId === ownerId);
       if (idx < 0) return prev;
       const seat: SeatSimState = { ...prev.seats[idx] };
-      const bought = tryRepurchase(seat, performance.now());
+      const bought = tryRepurchase(seat, performance.now(), { autoBuy: true, drones: prev.drones });
       if (!bought) return prev;
       const seats = prev.seats.map((s, i) => (i === idx ? seat : s));
       const eventFeed = appendEventRecords(prev.eventFeed, [
@@ -2188,7 +2189,7 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
                 guestSeqSeenRef.current.set(seat.ownerId, payload.seq);
                 countDroppedActions(payload);
                 if (!prev.matchEnd) {
-                  const consumed = consumeRepurchaseIntent(seat, payload, time);
+                  const consumed = consumeRepurchaseIntent(seat, payload, time, next.drones);
                   if (consumed) feedEntries.push(consumed.record);
                   // B2 PER-SEAT ECONOMY: the guest's shop intents
                   // apply to THEIR seat through the seat shop —
@@ -2615,6 +2616,12 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
           seat.bankedScrap = cascade.bankAfter;
           seat.deaths = cascade.deathsAfter;
           seat.shipLostAt = time;
+          // AUTO-BUYBACK (dev pin, 2026-10-25): snapshot the dead
+          // frame's build before the ship nulls — the repurchase
+          // reads it to rebuild the same frame as far as the
+          // post-tax bank reaches. Hold cargo is not snapshotted
+          // (salvage); escorts are not snapshotted (workshop).
+          seat.deathSnapshot = snapshotDeadShip(bs, next.drones);
           seat.ship = null;
           if (isLocalSeat) {
             // The local seat's bank IS the top-level wallet (the
@@ -2666,7 +2673,25 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
           // recorded at purchase; arrival itself is silent.
           for (const seat of simSeats) {
             if (respawnDue(seat, time)) {
-              const arrived = completeRespawn(seat);
+              let arrived = completeRespawn(seat);
+              // AUTO-BUYBACK (dev pin, 2026-10-25): a paid frame
+              // bought with a kit lands WITH its kit — the pending
+              // frame built at press replaces the bare starter,
+              // re-positioned at the arrival spawn, and its bought
+              // workforce spawns beside it. `arrived` is re-pointed
+              // so the #35 promotion below lands the built frame,
+              // not the starter.
+              if (arrived && seat.pendingBuyback) {
+                const kit = seat.pendingBuyback;
+                seat.ship = { ...kit.ship, pos: { ...arrived.pos } };
+                const spawned = spawnBuybackDrones(
+                  seat.ship, seat.star, kit.harvesters, kit.defenseDrones,
+                  seat.ownerId === localOwnerId ? 'player' : 'enemy',
+                );
+                if (spawned.length) next.drones = [...next.drones, ...spawned];
+                seat.pendingBuyback = undefined;
+                arrived = seat.ship;
+              }
               // PAID ARRIVAL LANDS ON THE TOP LEVEL (MP bank wipe,
               // Adam, 2026-10-25): the frame return carries the
               // working-copy `ship`, and the next frame's rebuild
