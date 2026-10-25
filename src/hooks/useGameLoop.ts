@@ -1573,6 +1573,18 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
         const ship = { ...next.ship };
         const star = { ...next.star };
         const enemyStar = { ...next.enemyStar };
+        next.projectiles = [...prev.projectiles];
+        // SOUND FIX (2026-10-25): copy-on-write for projectiles.
+        // The frame used to push new bolts into next.projectiles
+        // while it still WAS prev.projectiles (shallow copy), so
+        // the previous state's array already contained each bolt
+        // and the frame-boundary diff never saw a new id — fire
+        // events emitted only when a render lagged a frame and a
+        // bolt landed in a non-first updater (hence ~1-in-3-4 on
+        // a slow machine, not 1-in-1). The copy restores the
+        // diff's invariant for every push site below (player,
+        // bot, escort, turret); stepProjectiles still replaces
+        // the array with its fresh filtered result afterwards.
 
         // PER-SEAT PROJECTION (Phase 2, P2-2b): rebuild the seat
         // records around this frame's working copies, so everything
