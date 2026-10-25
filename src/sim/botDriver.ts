@@ -167,12 +167,13 @@ const EMPTY_RESULT: BotStepResult = {
   projectiles: [],
 };
 
-/** Total hold capacity for a ship, the loop's formula (cargo track only —
- * identical across lines; overload ratio applied to the total). */
+/** Total hold capacity for a ship, the loop's formula (cargo track +
+ * line/type bonus, overload ratio applied to the total). */
 const holdCapacityFor = (ship: Ship): number => {
   const regular =
     PHYSICS.CARGO.BASE_CAPACITY +
-    ship.upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS;
+    ship.upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS +
+    typeFor(ship.line, ship.typeTier).cargoBonus;
   return regular + Math.floor(regular * PHYSICS.CARGO.OVERLOAD_RATIO);
 };
 
