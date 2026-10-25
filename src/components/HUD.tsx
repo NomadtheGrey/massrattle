@@ -235,6 +235,11 @@ interface HUDProps {
   onSetHarborOpen: (open: boolean) => void;
   onUndockGuest: (guestOwnerId: string) => void;
   onSelectWeaponSlot: (slotIndex: number) => void;
+  /** Latest refused select press, stamped by the loop (BG part
+   * 1/2, Adam 2026-10-25 — weapon silence): the key path's voice.
+   * Loop-local state, NOT game state, so it survives host
+   * snapshots to the local HUD. Null = no refusal outstanding. */
+  selectRefusal?: { at: number; slot: number; why: 'empty' | 'mount' } | null;
   ship: Ship;
   drones: Harvester[];
   escorts: EscortShip[];
@@ -323,6 +328,7 @@ export const HUD: React.FC<HUDProps> = ({
   onSetHarborOpen,
   onUndockGuest,
   onSelectWeaponSlot,
+  selectRefusal = null,
   ship,
   drones,
   escorts,
@@ -654,6 +660,41 @@ export const HUD: React.FC<HUDProps> = ({
     if (stripNoticeTimer.current) window.clearTimeout(stripNoticeTimer.current);
     stripNoticeTimer.current = window.setTimeout(() => setStripNotice(null), 2800);
   };
+  // REFUSAL ECHOES (Adam, 2026-10-25 — weapon silence, BG part
+  // 1/2): the loop stamps refused key-path selects (selectRefusal)
+  // and dry-hold fires (the local ship's fireRefusedAt, read via
+  // the untyped-stamp idiom — the field is stamped, not typed).
+  // The HUD renders each stamp in the strip pill. Effects key on
+  // the stamp timestamps, so each refusal flashes exactly once,
+  // and the 2800ms freshness check keeps a stale stamp from
+  // flashing on a late mount. The click path needs no separate
+  // branch: a grey-chip click stamps selectRefusal through the
+  // same selectWeaponSlot, so one notice path covers clicks and
+  // keys alike (the earlier click branch is removed below).
+  React.useEffect(() => {
+    if (!selectRefusal) return;
+    if (Date.now() - selectRefusal.at > 2800) return;
+    const n = selectRefusal.slot < 5 ? selectRefusal.slot + 1 : 'T';
+    if (selectRefusal.why === 'empty') flashStripNotice(`SLOT ${n} EMPTY — NO WEAPON OWNED`);
+    else {
+      const wdef = getLoadoutItem(WEAPON_SELECT_ORDER[selectRefusal.slot]);
+      flashStripNotice(`CAN'T MOUNT ${(wdef?.name ?? 'THAT WEAPON').toUpperCase()} ON THIS HULL`);
+    }
+    // flashStripNotice is a HUD local, stable-enough per the
+    // workshop-notice precedent — deps stay on the stamp.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectRefusal?.at]);
+  const fireRefusedAt = (ship as unknown as { fireRefusedAt?: number }).fireRefusedAt;
+  React.useEffect(() => {
+    if (!fireRefusedAt) return;
+    if (Date.now() - fireRefusedAt > 2800) return;
+    const wdef = getLoadoutItem(loadout.weapon);
+    const wStats = wdef ? weaponStatsFor(wdef.id, arsenal[wdef.id] || 0) : null;
+    const cost = wStats?.scrapCost || 0;
+    const verb = wdef?.id === 'mine_layer' ? 'LAY' : wdef?.id === 'rail_lance' ? 'CHARGE' : 'FIRE';
+    flashStripNotice(cost > 0 ? `HOLD ${carrying}U — NEED ${cost}U TO ${verb}` : `HOLD EMPTY — CAN'T ${verb}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fireRefusedAt]);
   // SWITCH CONFIRMATION — THE FORCED SELL, AND THE ONE
   // REMAINING SHELVE (2026-10-22): a real hull change SELLS what
   // the new hull can't hold, at full price into the bank. The
@@ -1809,14 +1850,7 @@ export const HUD: React.FC<HUDProps> = ({
           const selected = loadout.weapon === wid;
           const verb = wid === 'mine_layer' ? 'LAY' : wid === 'rail_lance' ? 'CHARGE' : 'FIRE';
           return (
-            <button key={wid} onClick={() => {
-              // Grey-chip press used to fall through to the loop's
-              // select and die silently there (no-op on null) —
-              // the 'clicking does nothing' complaint. A refused
-              // press now says why; a live press selects as before.
-              if (selectable) onSelectWeaponSlot(i);
-              else flashStripNotice(!owned ? `SLOT ${i < 5 ? i + 1 : 'T'} EMPTY — NO WEAPON OWNED` : `CAN'T MOUNT ${(wdef?.name ?? 'THAT WEAPON').toUpperCase()} ON THIS HULL`);
-            }}
+            <button key={wid} onClick={() => onSelectWeaponSlot(i)}
               className={`hud-panel px-1.5 py-0.5 rounded border text-center min-w-[34px] sm:min-w-[44px] pointer-events-auto touch-manipulation active:scale-95 ${selected ? 'border-[#33ff33] bg-[#33ff33]/20 shadow-[0_0_12px_rgba(51,255,51,0.6)]' : selectable ? 'border-zinc-700' : 'border-zinc-800 opacity-45'}`}>
               <div className="text-[8px] sm:text-[9px] font-mono text-zinc-300 tracking-widest whitespace-nowrap">{i < 5 ? i + 1 : 'T'} · {wdef?.icon ?? '?'}</div>
               <div className={`text-[7px] sm:text-[8px] font-mono font-bold uppercase leading-tight whitespace-nowrap ${selected ? 'text-[#33ff33]' : selectable ? 'text-zinc-300' : 'text-zinc-500'}`}>
