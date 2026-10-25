@@ -123,6 +123,32 @@ export default function App() {
   useEffect(() => {
     if (net.room && net.room.phase !== 'lobby') setLobbyOpen(false);
   }, [net.room]);
+  // MATCH ORIGIN (Adam, 2026-10-25 — mode-pill recurrence):
+  // the pill must read the match the player ENTERED, not live
+  // socket presence. A terminal socket close nulls net.room
+  // while local play continues, which used to flip a room
+  // match's pill to SOLO mid-match (twice now, screenshot
+  // confirmed). Origin snapshots on the lobby-close flip —
+  // room present at close → 'room', else 'solo' — and clears
+  // only on explicit leave/forfeit (wrappers below) or lobby
+  // entry; it never follows a live room null mid-match. Null
+  // (solo boot, never opened the lobby) falls back to live
+  // room presence, which is correct there. The discriminator
+  // (are other players moving?) cannot change this shape: a
+  // solo origin still reads SOLO, a room origin still reads
+  // LOBBY — the fix is right under either answer. Why the
+  // socket died is a separate, BG-side question.
+  const [matchOrigin, setMatchOrigin] = useState<'room' | 'solo' | null>(null);
+  const prevLobbyOpenRef = useRef(lobbyOpen);
+  useEffect(() => {
+    const prev = prevLobbyOpenRef.current;
+    prevLobbyOpenRef.current = lobbyOpen;
+    if (prev && !lobbyOpen) setMatchOrigin(net.room ? 'room' : 'solo');
+    else if (!prev && lobbyOpen) setMatchOrigin(null);
+  }, [lobbyOpen, net.room]);
+  const inRoomMatch = matchOrigin === 'room' || (matchOrigin === null && !!net.room);
+  const leaveRoomMatch = () => { setMatchOrigin(null); net.leaveRoom(); setLobbyOpen(false); };
+  const forfeitRoomMatch = () => { setMatchOrigin(null); net.forfeitRoom(); setLobbyOpen(false); };
   // REPURCHASE (P2-5): the local seat is death-economy shipless when
   // its seat record has no ship and at least one death. Net matches
   // only — an SP death is game over and ResultsOverlay owns it. The
@@ -237,13 +263,15 @@ export default function App() {
           className="px-3 py-1.5 rounded-full bg-zinc-900/70 border border-[#33ff33]/60 text-[#33ff33] text-[10px] font-mono font-bold tracking-widest shadow-[0_0_10px_rgba(51,255,51,0.25)] active:scale-95 touch-manipulation flex items-center gap-1.5"
         >
           {/* MODE PILL (Adam, library look 2026-10-23; room form
-              pinned 2026-10-24): in a room the pill is simply
-              LOBBY — the room info, the link, seats, and leaving
-              all live in the lobby one tap away, and the 📋
-              sibling beside it still shares without opening it.
-              Solo is any moment with no room joined (net.room is
-              the one truth); solo keeps the SOLO indicator. */}
-          {net.room ? (
+              pinned 2026-10-24; origin law 2026-10-25): in a room
+              match the pill is simply LOBBY — the room info, the
+              link, seats, and leaving all live in the lobby one
+              tap away, and the 📋 sibling beside it still shares
+              without opening it. The pill reads MATCH ORIGIN
+              (inRoomMatch), NOT live net.room: a dead socket
+              nulls the room mid-match, and the pill must not
+              follow it into SOLO. Solo keeps the SOLO indicator. */}
+          {inRoomMatch ? (
             <span className="bg-[#33ff33] text-zinc-950 px-1.5 py-0.5 rounded-full">LOBBY</span>
           ) : (
             <>
@@ -299,8 +327,8 @@ export default function App() {
           price={repurchasePriceFor(localSeat.bankedScrap, localSeat.deaths)}
           buybackPreview={buybackPreview}
           onRepurchase={() => repurchaseShip(localSeat.ownerId)}
-          onLeaveMatch={() => { net.leaveRoom(); setLobbyOpen(false); }}
-          onForfeitMatch={() => { net.forfeitRoom(); setLobbyOpen(false); }}
+          onLeaveMatch={leaveRoomMatch}
+          onForfeitMatch={forfeitRoomMatch}
           onDismiss={() => setRepurchaseDismissed(true)}
           respawnAt={localRespawnAt}
         />
@@ -338,8 +366,8 @@ export default function App() {
             },
             onStart: net.startMatch,
             onSetTeam: net.setTeam,
-            onLeave: () => { net.leaveRoom(); setLobbyOpen(false); },
-            onForfeit: () => { net.forfeitRoom(); setLobbyOpen(false); },
+            onLeave: leaveRoomMatch,
+            onForfeit: forfeitRoomMatch,
             onClose: () => setLobbyOpen(false),
           }}
         />
