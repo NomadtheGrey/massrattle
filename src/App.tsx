@@ -16,7 +16,7 @@ import { SoundLayer } from './components/AudioLayer';
 import { ChatPanel } from './components/ChatPanel';
 import { useNetClient, NetSessionContext } from './net/useNetClient';
 import { RepurchaseOverlay } from './components/RepurchaseOverlay';
-import { repurchasePriceFor } from './sim/deathEconomy';
+import { repurchasePriceFor, respawnWaitMsFor } from './sim/deathEconomy';
 import { escortKindOf, healCapPctFor } from './shipProgression';
 
 export default function App() {
@@ -140,6 +140,25 @@ export default function App() {
   }, [seatLabels, soloCallsign, localOwnerId, state.seats]);
 
   const localSeat = state.seats.find(seat => seat.ownerId === localOwnerId);
+  // SOLO CONTINUE (Adam, 2026-10-25 — hull breach doors): the
+  // defeat doors read the loop's death-economy seat — never
+  // localSeatDead (room-only by construction). Continue is
+  // offered only for a solo, shipless, non-eliminated seat
+  // with a real death behind it; price and wait come from
+  // the sim's own functions, so the door quotes exactly what
+  // repurchaseShip will charge and stamp. Start Over keeps
+  // the existing reload path (the save is already cleared at
+  // death, so reload boots a fresh match by construction).
+  const soloSeatForContinue = !net.room ? state.seats.find(seat => seat.ownerId === localOwnerId) : undefined;
+  const soloContinue = soloSeatForContinue && state.isGameOver && !state.isVictory && !soloSeatForContinue.ship && !soloSeatForContinue.eliminated && (soloSeatForContinue.deaths ?? 0) > 0
+    ? {
+        price: repurchasePriceFor(soloSeatForContinue.bankedScrap, soloSeatForContinue.deaths),
+        bankedScrap: soloSeatForContinue.bankedScrap,
+        waitMs: respawnWaitMsFor(soloSeatForContinue.deaths, soloSeatForContinue.survivalMs ?? 0),
+        respawnAt: soloSeatForContinue.respawnAt ?? null,
+        onContinue: () => repurchaseShip(localOwnerId),
+      }
+    : null;
   // REPAIR TOP BUTTON (Adam, 2026-10-25 — quibble #2): the
   // in-play switch's state, same expressions HUD's old bottom
   // pill read — the button itself sits in the mode-pill row.
@@ -316,6 +335,7 @@ export default function App() {
         teamScrap={state.teamScrap}
         totalScrapInfused={state.star.totalScrapInfused}
         onRestart={restart}
+        soloContinue={soloContinue}
       />
       
       {/* HUD Overlay */}
