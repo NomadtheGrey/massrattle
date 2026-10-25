@@ -201,6 +201,12 @@ export default function App() {
     <ErrorBoundary>
     <NetSessionContext.Provider value={net}>
     <div ref={containerRef} className="crt-container w-full h-full flex items-center justify-center p-0 select-none touch-none">
+      {/* BLACK-SCREEN GUARD (Adam, 2026-10-25): the second ?. on
+          localThrusting below is load-bearing — the seat record
+          persists after death while the cascade nulls seat.ship,
+          and the old localSeat?.ship.thrust threw reading .thrust
+          off null on every local death (solo + MP), unmounting
+          the tree to black before any door could mount. */}
       <SoundLayer
         localOwnerId={localOwnerId}
         localShipPos={localSeat?.ship ? { x: localSeat.ship.pos.x, y: localSeat.ship.pos.y } : null}
