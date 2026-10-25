@@ -67,10 +67,7 @@ const capSummary = (d: ShipTypeDef): string => {
   if (d.autoGuns > 0) parts.push(`${d.autoGuns} TURRET MOUNT${d.autoGuns > 1 ? 'S' : ''}`);
   if (d.minesPerDrop > 1) parts.push(`${d.minesPerDrop} MINES / DROP`);
   if (d.dronesFielded > 1) parts.push(`FIELDS ${d.dronesFielded} DRONES`);
-  // LINE CARGO BONUS REMOVED (Adam, 2026-10-25): every line's
-  // hold is identical (12 + 4 x cargo) — no line term, so no
-  // +N HOLD part here. Drone carry bonuses are separate and
-  // untouched; vacBonus above stays.
+  if (d.cargoBonus > 0) parts.push(`+${d.cargoBonus} HOLD`);
   if (d.vacBonus > 0) parts.push(`+${d.vacBonus} VAC`);
   return parts.length ? parts.join(' · ') : 'BALANCED FRAME';
 };
