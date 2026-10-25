@@ -1931,11 +1931,19 @@ export const HUD: React.FC<HUDProps> = ({
                     const gateReason = def.category === 'weapon' ? weaponGateReason(shipLine, typeTier, def.id) : null;
                     const mountable = gateReason === null;
                     const canBuy = !maxed && mountable && funds >= nextCost;
-                    // Swap pricing (Adam's pin): free into an empty slot,
-                    // otherwise 60 + 20 per tier beyond the first of the
-                    // item being swapped in.
+                    // Swap pricing — CORRECTED (Adam, 2026-10-25):
+                    // owned weapons equip FREE at any time, no fee
+                    // on selection change, period. The old 60 + 20
+                    // per tier swap fee survives ONLY for defense /
+                    // hybrid slots (out of this correction's scope);
+                    // the hull line-switch toll stands untouched.
+                    // With swapCost 0, canEquip drops its funds gate
+                    // for weapons, the button reads EQUIP (FREE),
+                    // and the SWAPPING IN ... COSTS notice can't fire
+                    // for weapons — all by construction, not by
+                    // special-casing each site.
                     const slotFilled = loadout[def.category] !== null;
-                    const swapCost = slotFilled ? swapCostForTier(Math.max(1, owned)) : 0;
+                    const swapCost = def.category === 'weapon' ? 0 : (slotFilled ? swapCostForTier(Math.max(1, owned)) : 0);
                     const canEquip = owned > 0 && !equipped && mountable && funds >= swapCost;
                     return (
                       <div key={def.id} className={`pitted-metal p-3 sm:p-4 flex flex-col gap-1.5 sm:gap-2 relative rounded-lg text-left border ${equipped && !mountable ? 'border-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.25)]' : equipped ? 'border-[#33ff33] shadow-[0_0_10px_rgba(51,255,51,0.25)]' : gateReason ? 'border-zinc-800' : 'border-zinc-700'}`}>
