@@ -13,6 +13,7 @@ import { useGameLoop } from './hooks/useGameLoop';
 import { inBankWell } from './bank';
 import { LobbyScreen, ShareCopyButtons } from './components/lobby/LobbyScreen';
 import { SoundLayer } from './components/AudioLayer';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { ChatPanel } from './components/ChatPanel';
 import { useNetClient, NetSessionContext } from './net/useNetClient';
 import { RepurchaseOverlay } from './components/RepurchaseOverlay';
@@ -197,12 +198,19 @@ export default function App() {
   }, []);
 
   return (
+    <ErrorBoundary>
     <NetSessionContext.Provider value={net}>
     <div ref={containerRef} className="crt-container w-full h-full flex items-center justify-center p-0 select-none touch-none">
+      {/* BLACK-SCREEN GUARD (Adam, 2026-10-25): the second ?. on
+          localThrusting below is load-bearing — the seat record
+          persists after death while the cascade nulls seat.ship,
+          and the old localSeat?.ship.thrust threw reading .thrust
+          off null on every local death (solo + MP), unmounting
+          the tree to black before any door could mount. */}
       <SoundLayer
         localOwnerId={localOwnerId}
         localShipPos={localSeat?.ship ? { x: localSeat.ship.pos.x, y: localSeat.ship.pos.y } : null}
-        localThrusting={!!localSeat?.ship.thrust}
+        localThrusting={!!localSeat?.ship?.thrust}
         chatLog={net.chatLog}
         isVictory={state.isVictory}
         isGameOver={state.isGameOver}
@@ -472,5 +480,6 @@ export default function App() {
           learned FIRE [F] or DECOY [X] — so it was retired. */}
     </div>
     </NetSessionContext.Provider>
+    </ErrorBoundary>
   );
 }

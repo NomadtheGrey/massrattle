@@ -10,7 +10,7 @@
  * the save), both stars, banks, drones, escorts, the scrap field.
  * WHAT DOES NOT: in-flight transients (projectiles, mines, CME
  * fronts, wreck tombstones, a live decoy) and the loop-clock stamps
- * (respawn timers, refusal hints) — a fresh page runs a fresh
+ * (respawn timers, refusal hints, fire cooldowns) — a fresh page runs a fresh
  * clock, so stamps from the old one would read as far-future.
  * The bot captain's patrol memory lives in driver-held Maps, not
  * in state; he re-scouts after a resume. That is accepted.
@@ -52,6 +52,21 @@ export const sanitizeSoloState = (s: GameState): GameState | null => {
     // forever — its auto-repurchase requires the stamp to exist.)
     if (seat.respawnAt !== undefined) seat.respawnAt = 0;
     if (seat.shipLostAt !== undefined) seat.shipLostAt = 0;
+    // FIRE COOLDOWN (F-fire, 2026-10-25): a ship's fireReadyAt is a
+    // loop-clock stamp too, and this sanitizer missed it — a resumed
+    // ship carried the old page's large stamp, so the fire gate
+    // (time >= fireReadyAt) stayed false for minutes-to-hours while
+    // WASD worked and the weapon showed selected. Deleting it
+    // restores the starter shape (absent = never fired) on every
+    // seat's ship. The live game's own cooldown is untouched — only
+    // the saved copy is scrubbed.
+    if (seat.ship) delete seat.ship.fireReadyAt;
+  }
+  // Escort volleys stamp the same clock (escorts.ts), so a resumed
+  // wing would wait out its old stamp the same way — scrubbed here
+  // alongside the seats' ships.
+  if (Array.isArray(c.escorts)) {
+    for (const escort of c.escorts) delete escort.fireReadyAt;
   }
   // The identity invariant, re-linked: the seat copies are
   // canonical; the top-level fields point at them.

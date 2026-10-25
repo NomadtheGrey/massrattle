@@ -184,6 +184,7 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
     shakeAmount: 0,
     isVictory: false,
     isGameOver: false,
+    isVacActive: false,
     useAnalogGauges: true,
     slip: 0,
   });
@@ -2925,6 +2926,7 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
           scrap: newScrap,
           teamScrap,
           glitchActive: glitch,
+          isVacActive,
           slip,
         };
       });

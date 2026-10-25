@@ -4,7 +4,8 @@ Adapted 2026-10-21 from BioForge's Code Manifesto — Adam's constitution
 across his games, translated here to Mass Rattle's codebase and machinery.
 The ten tenets' substance and law-form are unchanged; the engine-specifics
 are this repo's own. An eleventh tenet — on comments — is Mass Rattle's own
-addition (Adam, 2026-10-21).
+addition (Adam, 2026-10-21). A twelfth tenet — on nullable seat reads — is
+Mass Rattle's own addition (Adam, 2026-10-25, from the black-screen incident).
 
 **Layout note.** Mass Rattle's source is organized by responsibility:
 `src/sim/` holds the pure simulation modules, `src/net/` the wire protocol
@@ -14,7 +15,7 @@ and client session, `worker/` the Cloudflare Worker and Durable Objects,
 are born as their own files in their home layer.
 
 Scope: All Code Generation, Features, Refactoring, and Architecture
-This document defines the strict architectural, style, and performance rules governing all code contributions and refactors in the Mass Rattle codebase. Every developer, agent, and reviewer must adhere strictly to these 11 tenets:
+This document defines the strict architectural, style, and performance rules governing all code contributions and refactors in the Mass Rattle codebase. Every developer, agent, and reviewer must adhere strictly to these 12 tenets:
 
 1. Guard Clauses, Fail-Fast Flow & Zero 'else' / 'else if'
 STRICT RULE: Avoid using else or else if blocks entirely across all code. Use guard clauses, early returns, and discrete, independent if checks to keep code completely flat at depth 0.
@@ -158,5 +159,17 @@ Pattern:
 Rule: Code says what it does. A comment earns its place in exactly three ways: (a) PROVENANCE — a ruling, its date, and its reason, cited where the decision lives ('Adam's ruling of 2026-10-21: the Rail Lance fires through stars'); (b) STATUS — a number or behavior flagged DRAFT awaiting its pin, or an invariant a future editor would otherwise 'fix' into a bug; (c) THE OBTUSE — where code is necessarily dense or clever, the comment explains the mechanism so no reader must reverse-engineer it.
 Prohibition: comments that merely restate what the code plainly says are noise and are deleted on sight; commented-out code is never committed — history remembers, the file shouldn't. A tuned constant without its provenance comment is unfinished (see Tenet 10).
 
+12. Nullable Seats, Non-Nullable Stand-ins — Guard Every Seat.Ship Read
+Rule: A seat record persists after death while its ship nulls (the death cascade nulls seat.ship in solo and in hosted play alike). Any render read through a seat's ship MUST use `?.` or an explicit null check — the `localSeat?.ship ? {...} : null` ternary idiom or the `?.` chain. A `?.` on the seat alone does NOT guard the ship: `localSeat?.ship.thrust` still throws when the ship is null, because the chain after the guarded link is unguarded.
+Law: The top-level state.ship is the surviving stand-in — it is never reassigned at death, by design — so reads through it need no guard and must not be "guarded" into a different shape. Guard the seat's ship, never the stand-in.
+Incident (Adam, 2026-10-25): the black screen on local death, solo and multiplayer. App's `localSeat?.ship.thrust` (a SoundLayer prop, evaluated before any door could mount) threw reading `.thrust` off null on every local death render, unmounting the whole tree to black with no error boundary. Fix: `localSeat?.ship?.thrust` — one `?.`, mirroring the guarded sibling prop. Sweep rule: every seat.ship chain in render code gets checked on sight; the 2026-10-25 sweep confirmed that line was the sole render-phase unguarded seat-ship read (the canvas's `rs = seat.ship` sites guard with `if (!rs) continue`, the HUD's host/guest sites guard with `?.` or a ternary, App's position prop guards with a ternary).
+Pattern:
+  // PREFERRED (every nullable link guarded):
+  localThrusting={!!localSeat?.ship?.thrust}
+  localShipPos={localSeat?.ship ? { x: localSeat.ship.pos.x, y: localSeat.ship.pos.y } : null}
+
+  // REJECTED (the seat is guarded, the ship is not — throws on death):
+  localThrusting={!!localSeat?.ship.thrust}
+
 Verification & Compliance
-All pull requests, agent tasks, and automated refactors must verify compliance against these 11 rules prior to merging.
+All pull requests, agent tasks, and automated refactors must verify compliance against these 12 rules prior to merging.

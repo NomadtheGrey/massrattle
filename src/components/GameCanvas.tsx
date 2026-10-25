@@ -1103,24 +1103,28 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ state, width, height, se
     ctx.save();
     ctx.translate(ship.pos.x, ship.pos.y);
     
-    // Attractor Radius
+    // Attractor Radius — ONE ring, the CURRENT effective limit
+    // (Adam, 2026-10-25): the passive radius normally, ×1.6 while
+    // VAC is held — the loop's own attractLimit (useGameLoop) —
+    // so the ring never claims a field that isn't there, and never
+    // under-represents the held field either.
+    const vacRadius = state.isVacActive ? ship.attractRadius * 1.6 : ship.attractRadius;
     ctx.strokeStyle = glitchActive ? 'rgba(51, 255, 51, 0.2)' : 'rgba(51, 255, 51, 0.08)';
     ctx.beginPath();
-    ctx.arc(0, 0, ship.attractRadius, 0, Math.PI * 2);
+    ctx.arc(0, 0, vacRadius, 0, Math.PI * 2);
     ctx.stroke();
 
     // SIPHON VAC tell: slow inward chevrons riding the attractor ring —
-    // the field drinks, and the ring should say so. (The siphon's wider
-    // eat-field only exists while VAC is held, so no second ring is
-    // drawn — that would claim a field that isn't always there.)
+    // the field drinks, and the ring should say so. They ride the
+    // effective ring, so they expand with it while VAC is held.
     if (ship.loadout.hybrid === 'siphon_vac') {
       const spin = performance.now() / 2400;
       ctx.strokeStyle = 'rgba(51, 255, 51, 0.22)';
       ctx.lineWidth = 1;
       for (let i = 0; i < 6; i++) {
         const a = spin + (i * Math.PI) / 3;
-        const rx = Math.cos(a) * ship.attractRadius;
-        const ry = Math.sin(a) * ship.attractRadius;
+        const rx = Math.cos(a) * vacRadius;
+        const ry = Math.sin(a) * vacRadius;
         ctx.save();
         ctx.translate(rx, ry);
         ctx.rotate(a + Math.PI / 2);

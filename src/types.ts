@@ -531,6 +531,11 @@ export interface GameState {
   shakeAmount: number;
   isVictory: boolean;
   isGameOver: boolean;
+  /** True while the local ship's vacuum is held (Q): the attractor
+   * ring draws the held effective limit (×1.6) instead of the
+   * passive radius. Set by the loop's local frame; a guest reads
+   * false until snapshots carry it. */
+  isVacActive: boolean;
   useAnalogGauges: boolean;
   lastEjectTime?: number;
   slip: number;
