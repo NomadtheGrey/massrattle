@@ -66,6 +66,12 @@ export const PHYSICS = {
     // circles instead of freezing — circle radius = SPEED × fraction / turn rate.
     DRIFT_SPEED_FRACTION: 0.3,
     DRIFT_TURN_RATE: 0.02,
+    // STAR-FLEET HEALING (Adam, 2026-10-25): the star sustains its own fleet — a
+    // star-fleet drone regains HP while on station (within its fleet leash, which is
+    // everywhere it works). Rate DRAFT: 1 HP/s, capped at DRONE_MAX_HEALTH. This
+    // overturns the old never-heal law (respawn was the only recovery); the
+    // workforce dock-heal is untouched. Adam corrects the rate/range if wrong.
+    FLEET_REGEN_PER_SEC: 1,
   },
   DEFENSE: {
     /** Turret engagement range, from the star's center: 1200 —
