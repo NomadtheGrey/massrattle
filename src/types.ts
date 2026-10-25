@@ -367,6 +367,36 @@ export interface Harvester {
  * frame's working copies every frame, so components keep reading the
  * top-level fields exactly as they always have.
  */
+
+/** AUTO-BUYBACK (dev pin, 2026-10-25): the dead frame's build, as
+ * the death cascade snapshotted it. Everything the repurchase
+ * restores, up to these counts — never beyond them. */
+export interface DeathSnapshot {
+  line: ShipLine | null;
+  typeTier: TypeTier;
+  lineSwitchesUsed: number;
+  hullSteps: number;
+  upgrades: { thrust: number; handling: number; attractor: number; fuelCap: number; cargo: number };
+  turretMounts: number;
+  /** Owned item tiers (item id -> tier), all categories. */
+  arsenal: Record<string, number>;
+  /** Equipped item per slot at death (null = slot empty). */
+  loadout: { weapon: string | null; defense: string | null; hybrid: string | null };
+  /** Fielded workforce counts at death (caps re-checked at buy). */
+  harvesters: number;
+  defenseDrones: number;
+}
+
+/** AUTO-BUYBACK (dev pin, 2026-10-25): a paid repurchase's bought
+ * kit, waiting out the death-tax wait. The ship is the fully built
+ * frame (paid verbs ran on a clone at press); the counts spawn as
+ * fresh drone entities at arrival. */
+export interface PendingBuyback {
+  ship: Ship;
+  harvesters: number;
+  defenseDrones: number;
+}
+
 export interface SeatSimState {
   /** Seat-scoped ownerId (`seat-<starIndex>`); never changes. */
   ownerId: string;
@@ -427,6 +457,19 @@ export interface SeatSimState {
    * off snapshots (their own clock is not the host's loop clock, so
    * the total + first-sight is their countdown basis). */
   respawnWaitMs?: number;
+  /** AUTO-BUYBACK (dev pin, 2026-10-25): the dead frame's build,
+   * snapshotted by the death cascade before the ship nulls — the
+   * repurchase reads it to rebuild the same frame as far as the
+   * post-tax bank reaches. Single-use: consumed at repurchase
+   * (tryRepurchase) and dead on any new life (completeRespawn).
+   * Hold cargo is NOT snapshotted (it dropped as salvage);
+   * escorts are NOT snapshotted (the player re-buys them). */
+  deathSnapshot?: DeathSnapshot;
+  /** AUTO-BUYBACK (dev pin, 2026-10-25): the frame + workforce a
+   * paid repurchase bought at press, waiting out the death-tax
+   * wait — the arrival tick lands it with the frame. Inert on an
+   * eliminated seat (it never respawns, so the kit never lands). */
+  pendingBuyback?: PendingBuyback;
   /** Total time this seat has SURVIVED this match (ms, loop clock),
    * accrued per frame while it has a ship and is not eliminated;
    * never reset by death — survival is banked across lives. Read

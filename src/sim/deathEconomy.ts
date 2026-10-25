@@ -46,9 +46,10 @@
  * (src/sim/matchAssembly.ts shipSpawnPosition).
  */
 
-import type { SeatSimState, Ship } from '../types';
+import type { Harvester, SeatSimState, Ship } from '../types';
 import { createStarterShip } from './seatState';
 import { shipSpawnPosition } from './matchAssembly';
+import { computeBuyback, type BuybackLine } from './autoBuyback';
 
 /** DRAFT: fraction of the seat's bank taken on each ship death. */
 export const BANK_LOSS_FRACTION = 0.25;
@@ -165,6 +166,15 @@ export interface RepurchaseResult {
   /** Loop-clock arrival of a paid frame; absent when the ship
    *  spawned at once (the free floor never waits). */
   respawnAt?: number;
+  /** AUTO-BUYBACK (dev pin, 2026-10-25): the kit the press bought
+   *  alongside the price, when autoBuy ran — the spend, what it
+   *  restored, and what it could not afford. Absent on the free
+   *  floor (no auto-buys) and on bot buy-backs (players only). */
+  buyback?: {
+    spent: number;
+    bought: BuybackLine[];
+    skipped: BuybackLine[];
+  };
 }
 
 /**
@@ -184,6 +194,10 @@ export const completeRespawn = (seat: SeatSimState): Ship | null => {
   seat.shipLostAt = undefined;
   seat.respawnAt = undefined;
   seat.respawnWaitMs = undefined;
+  // A new life kills the old snapshot: the next death snapshots
+  // its own frame. (The pending kit, if any, is NOT cleared here —
+  // the arrival tick reads it after this returns.)
+  seat.deathSnapshot = undefined;
   return ship;
 };
 
@@ -194,6 +208,19 @@ export const respawnDue = (seat: SeatSimState, now: number): boolean =>
   !seat.eliminated &&
   seat.respawnAt !== undefined &&
   now >= seat.respawnAt;
+
+/**
+ * Options for tryRepurchase. `autoBuy` runs the auto-buyback kit
+ * (dev pin, 2026-10-25) — HUMAN repurchase paths only (the local
+ * callback, the guest intent). Bots never pass it and keep their
+ * B2 policy: same prices, same tax, no advantage created. `drones`
+ * is the current real drone list at press (survivors seed the
+ * clone's field, so the workforce beat restores only the gap).
+ */
+export interface TryRepurchaseOpts {
+  autoBuy?: boolean;
+  drones?: readonly Harvester[];
+}
 
 /**
  * Buy a shipless seat a new frame, mutating the seat record (the
@@ -207,10 +234,19 @@ export const respawnDue = (seat: SeatSimState, now: number): boolean =>
  * eliminated: a dead star buys no ships) or when a paid buy-back
  * is already pending (a second intent finds the wait stamped and
  * refuses — no double charge, structurally).
+ *
+ * AUTO-BUYBACK (dev pin, 2026-10-25): with autoBuy on a PAID
+ * buy-back, the remaining post-tax bank auto-spends at press
+ * (same moment the price is paid) through computeBuyback's clone
+ * run — the spend is deducted here, the built frame stored as the
+ * seat's pendingBuyback, and the arrival tick lands it with the
+ * frame. The FREE floor never auto-buys (free Skiff, nothing to
+ * spend); a missing snapshot buys price-only (graceful).
  */
 export const tryRepurchase = (
   seat: SeatSimState,
   now: number,
+  opts?: TryRepurchaseOpts,
 ): RepurchaseResult | null => {
   if (seat.ship || seat.eliminated || (seat.deaths ?? 0) <= 0) return null;
   if (seat.respawnAt !== undefined) return null;
@@ -221,10 +257,61 @@ export const tryRepurchase = (
     const ship = completeRespawn(seat);
     return ship ? { ship, cost } : null;
   }
+  let buyback: RepurchaseResult['buyback'];
+  if (opts?.autoBuy && seat.deathSnapshot) {
+    const plan = computeBuyback(seat, seat.deathSnapshot, opts.drones ?? []);
+    if (plan.bought.length > 0) {
+      seat.bankedScrap -= plan.spent;
+      seat.pendingBuyback = {
+        ship: plan.ship,
+        harvesters: plan.harvesters,
+        defenseDrones: plan.defenseDrones,
+      };
+    }
+    buyback = { spent: plan.spent, bought: plan.bought, skipped: plan.skipped };
+    seat.deathSnapshot = undefined; // consumed: one snapshot, one buy-back
+  }
   const waitMs = respawnWaitMsFor(seat.deaths, seat.survivalMs ?? 0);
   seat.respawnAt = now + waitMs;
   seat.respawnWaitMs = waitMs;
-  return { ship: null, cost, respawnAt: seat.respawnAt };
+  return { ship: null, cost, respawnAt: seat.respawnAt, buyback };
+};
+
+/**
+ * UI PREVIEW (dev pin, 2026-10-25 — the repurchase/Continue form
+ * shows what auto-buyback will restore and what it can't afford,
+ * prices transparent). Pure: mutates nothing. Returns null when
+ * there is nothing to preview (no snapshot, ship alive, eliminated,
+ * never died, or the free floor — free Skiff, no auto-buys).
+ * The caller passes the seat AS IT STANDS (pre-price bank) and the
+ * current drone list; the price is computed here, the plan from
+ * the post-price remainder.
+ */
+export const previewBuyback = (
+  seat: SeatSimState,
+  drones: readonly Harvester[],
+): {
+  price: number;
+  budget: number;
+  spent: number;
+  remaining: number;
+  bought: BuybackLine[];
+  skipped: BuybackLine[];
+} | null => {
+  if (seat.ship || seat.eliminated || (seat.deaths ?? 0) <= 0) return null;
+  if (!seat.deathSnapshot) return null;
+  const price = repurchasePriceFor(seat.bankedScrap, seat.deaths);
+  if (price <= 0) return null; // free floor: no auto-buys to preview
+  const budgetSeat: SeatSimState = { ...seat, bankedScrap: seat.bankedScrap - price };
+  const plan = computeBuyback(budgetSeat, seat.deathSnapshot, drones);
+  return {
+    price,
+    budget: budgetSeat.bankedScrap,
+    spent: plan.spent,
+    remaining: budgetSeat.bankedScrap - plan.spent,
+    bought: plan.bought,
+    skipped: plan.skipped,
+  };
 };
 
 /**
