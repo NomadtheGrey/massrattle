@@ -180,6 +180,7 @@ export const createMatch = (config: CreateMatchConfig): GameState => {
     shakeAmount: 0,
     isVictory: false,
     isGameOver: false,
+    isVacActive: false,
     useAnalogGauges: true,
     slip: 0,
   };
