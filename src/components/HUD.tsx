@@ -479,6 +479,10 @@ export const HUD: React.FC<HUDProps> = ({
   const previewCopiedTimer = React.useRef<number | null>(null);
   const ordersPillShown = canOrder && bankInWell && !isShopOpen;
   const stripDetailShown = phoneStripOpen;
+  // TRACK-MAXED COUNT (Adam, 2026-10-25 — quibble): the
+  // maxed-track pointer names how many of the five base tracks
+  // are capped, not just that one is.
+  const maxedTrackCount = trackStatus(ship).filter(t => t.atCap).length;
   const dockSurfaceShown = !!ship.dockedTo || !!dockTarget;
   const caps = capsFor(shipLine, typeTier);
   const switchCost = switchToll({ lineSwitchesUsed, typeTier });
@@ -1747,11 +1751,12 @@ export const HUD: React.FC<HUDProps> = ({
           </div>
         ))}
         <div className={`w-px bg-zinc-800 mx-0.5 ${stripDetailShown ? '' : 'max-md:hidden'}`} />
-        {/* MAXED-TRACK POINTER (Option C): a capped track names
-            where its headroom lives — its own wrapped row right
-            after the tracks; phone shows it with the detail. */}
-        {typeTier < 5 && trackStatus(ship).some(t => t.atCap) && (
-          <div className={`basis-full text-center text-[8px] sm:text-[9px] font-mono font-bold tracking-widest text-amber-400 ${stripDetailShown ? '' : 'max-md:hidden'}`}>⬆ TRACK MAXED — HEADROOM IS UP A FRAME</div>
+        {/* MAXED-TRACK POINTER (Option C): capped tracks name
+            where their headroom lives — their own wrapped row
+            right after the tracks, counting how many of the
+            five are capped; phone shows it with the detail. */}
+        {typeTier < 5 && maxedTrackCount > 0 && (
+          <div className={`basis-full text-center text-[8px] sm:text-[9px] font-mono font-bold tracking-widest text-amber-400 ${stripDetailShown ? '' : 'max-md:hidden'}`}>⬆ {maxedTrackCount} OF 5 MAXED — HEADROOM IS UP A FRAME</div>
         )}
         {([
           { slot: 'weapon' as const, label: 'WPN' },
