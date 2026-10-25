@@ -62,7 +62,7 @@ export function DonateModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
       onClick={onClose}
     >
       <div
-        className="hud-panel hud-panel-deep rounded border border-rose-900/60 w-full max-w-sm"
+        className="hud-panel hud-panel-deep rounded border border-rose-900/60 w-full max-w-sm max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         <div className="px-4 py-3 flex items-center gap-3 border-b border-zinc-800">

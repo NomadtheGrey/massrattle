@@ -1068,8 +1068,12 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
       )}
 
-      {/* DESKTOP LEFT ASIDE (Hidden on phones) */}
-      <aside className="hidden md:flex w-48 min-w-[192px] flex-col gap-4">
+      {/* DESKTOP LEFT ASIDE (Hidden on phones) — NO-CLIPPING RULE
+          (Adam, 2026-10-25): min-h-0 lets this flex column shrink
+          below its content height, overflow-y-auto scrolls it when
+          taller than the viewport, so the foot (Comms/Logs hull
+          block) is never clipped unreachable. */}
+      <aside className="hidden md:flex w-48 min-w-[192px] flex-col gap-4 min-h-0 overflow-y-auto">
         {uiOptions.astroPanel && (
         <div className="hud-panel p-4 border-4">
           <div className="absolute top-0 right-0 p-1 text-[10px] text-[#2d2d30]">MOD-CR90</div>
