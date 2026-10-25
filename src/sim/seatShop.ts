@@ -173,14 +173,21 @@ export const seatBuyItem = (seat: SeatSimState, ctx: SeatShopCtx, itemId: string
 export const seatEquipItem = (seat: SeatSimState, ctx: SeatShopCtx, itemId: string): SeatShopChange | null => {
   const def = getLoadoutItem(itemId);
   const ship = seat.ship;
-  if (!def || !ship || !inTeamWell(ctx.seats, ship)) return null;
+  if (!def || !ship) return null;
+  // SWAP FREE (Adam correction, 2026-10-25): weapon equips are
+  // not shop transactions — no well gate, no fee (the loop's
+  // chip/key path never had a well gate; this keeps the guest
+  // intent path honest with the guide's "anytime, anywhere").
+  // Defense/hybrid equips stay shop transactions: well-gated,
+  // fee-charged, as before.
+  if (def.category !== 'weapon' && !inTeamWell(ctx.seats, ship)) return null;
   const owned = ship.arsenal[itemId] || 0;
   if (owned <= 0) return null;
   if (!canMountWeapon(ship.line, ship.typeTier, itemId)) return null;
   const slot = def.category;
   const current = ship.loadout[slot];
   if (current === itemId) return null;
-  if (current !== null && !pay(seat, swapCostForTier(owned), true)) return null;
+  if (current !== null && def.category !== 'weapon' && !pay(seat, swapCostForTier(owned), true)) return null;
   seat.ship = { ...seat.ship!, loadout: { ...seat.ship!.loadout, [slot]: itemId } };
   return {};
 };

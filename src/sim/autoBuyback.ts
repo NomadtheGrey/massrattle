@@ -68,7 +68,6 @@ import {
   LOADOUT_ITEMS,
   getLoadoutItem,
   itemTierCost,
-  swapCostForTier,
 } from '../loadout';
 import {
   DRONE_MAX_HEALTH,
@@ -321,18 +320,18 @@ export const computeBuyback = (
     }
   }
   // Weapon SELECTION: re-equip the pre-death selected weapon if
-  // its tier was restored, else the starter Bolt stays. A non-Bolt
-  // weapon swaps into the occupied weapon slot at the pinned swap
-  // price; if the swap is unaffordable the tiers stay owned but
-  // unequipped (shop law — owning is not equipping).
+  // its tier was restored, else the starter Bolt stays. SWAP
+  // FREE (Adam correction, 2026-10-25 — supersedes the earlier
+  // pin reading that the re-equip paid the swap price): the
+  // equip costs 0, so it never fails on funds (the else below
+  // is a safety net for mount/well edge cases only).
   if (
     selectedWeapon &&
     selectedWeapon !== ship().loadout.weapon &&
     (ship().arsenal[selectedWeapon] ?? 0) > 0
   ) {
     const def = getLoadoutItem(selectedWeapon);
-    const tier = ship().arsenal[selectedWeapon] ?? 0;
-    const price = ship().loadout.weapon === null ? 0 : swapCostForTier(tier);
+    const price = 0;
     const ok = seatEquipItem(work, ctx, selectedWeapon);
     if (ok && ship().loadout.weapon === selectedWeapon) {
       bought.push({ label: `equip ${def?.name ?? selectedWeapon}`, price });
