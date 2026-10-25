@@ -1278,6 +1278,11 @@ export const HUD: React.FC<HUDProps> = ({
                   >
                     <span className="text-[10px] font-bold uppercase tracking-tighter">[{u.key}] {u.label.substring(0,4)}</span>
                     <span className="text-[8px]">Lvl {u.lvl}/{u.cap}</span>
+                    {/* PANEL PRICE (Adam, 2026-10-25): the next price
+                        sits ON the tile (strip idiom) — it used to
+                        live only in the hover tooltip. MAX at cap,
+                        never a fake next price. */}
+                    {u.lvl >= u.cap ? <span className="text-[8px] text-zinc-500">MAX</span> : <span className="text-[8px] text-amber-300">⬆{cost}U</span>}
                     <div className="absolute -top-8 left-1/2 -translate-x-1/2 transition-all opacity-0 group-hover:opacity-100 whitespace-nowrap text-[10px] bg-black border border-zinc-800 p-1 font-mono z-50">
                       REQ: {cost} SCRAP ({bankInWell ? 'HOLD+BANK' : 'HOLD — BANK COUNTS IN THE WELL'})
                     </div>
