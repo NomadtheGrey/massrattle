@@ -15,7 +15,7 @@ import {
   type SimEvent,
 } from '../sim/simEvents';
 import { DEBUG_ARMED } from '../debug';
-import { stepStarBurn, stepShipPhysics, ShipPhysicsInputs } from '../sim/physics';
+import { stepStarBurn, stepShipPhysics, loadFactorFor, ShipPhysicsInputs } from '../sim/physics';
 import { createMatch, shipSpawnPosition } from '../sim/matchAssembly';
 import { loadSoloGame, saveSoloGame, clearSoloGame } from '../soloSave';
 import { TUTORIAL_FLAG_KEY, TUTORIAL_STEP_DEFS, TUTORIAL_STIPEND, TEETH_INDEX, captureBaseline, type TutorialBaseline } from '../tutorial';
@@ -1870,12 +1870,12 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
           const overloadCapacity = Math.floor(regularCapacity * PHYSICS.CARGO.OVERLOAD_RATIO);
           const totalCapacity = regularCapacity + overloadCapacity;
 
-          // Slowdown Penalty (Overload)
-          let speedMult = 1.0;
-          if (s.carrying > regularCapacity) {
-            const excess = s.carrying - regularCapacity;
-            speedMult = 1.0 - (excess / overloadCapacity) * PHYSICS.CARGO.SLOWDOWN_PENALTY;
-          }
+          // Pinned load curve (Adam, 2026-10-25): effective thrust speed 1.0 → 0.85 over
+          // empty → regular, then 0.85 → 0.50 over regular → total. Single punishment:
+          // this factor replaces the old speedMult AND the cargo-mass divisor (flat mass
+          // in physics.ts) — never both stacked. (regularCapacity still carries the
+          // line/type cargoBonus here — see BG's note to dev on UI's a4853df display ruling.)
+          const loadFactor = loadFactorFor(s.carrying, regularCapacity, totalCapacity);
 
           if (input.wantsThrust && s.fuel > PHYSICS.FUEL_CONSUMPTION) {
             s.thrust = true;
@@ -1912,7 +1912,7 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
             ship: s, simSeats, star: args.ownStar, enemyStar: args.hostileStar,
             keys: args.physKeys,
             touchInputs: args.physTouch,
-            stick, stickDist, speedMult, thrustFactor: sThrustFactor, gravFactor: sGravFactor, hyId: sHyId, hyTier: sHyTier,
+            stick, stickDist, loadFactor, thrustFactor: sThrustFactor, gravFactor: sGravFactor, hyId: sHyId, hyTier: sHyTier,
           });
 
           // Scrap Collection, ATTRACTION and CULLING

@@ -36,7 +36,6 @@ export const PHYSICS = {
   STAR_GROWTH_COST_STEP: 25,
   STAR_GROWTH_MASS_MULT: 1.25,
   STAR_GROWTH_SIZE_MULT: 1.15,
-  MASS_PER_CARGO: 0.35, 
   FUEL_CONSUMPTION: 0.08,
   FUEL_REGEN: 0.06,
   FUEL_AUTO_CONVERT_THRESHOLD: 10, 
@@ -51,7 +50,11 @@ export const PHYSICS = {
     BASE_CAPACITY: 12,
     UPGRADE_BONUS: 4,
     OVERLOAD_RATIO: 0.25,
-    SLOWDOWN_PENALTY: 0.4, // Up to 40% slower at max overload
+    // PINNED LOAD CURVE (Adam, 2026-10-25): effective thrust speed as a fraction of empty —
+    // 0.85 at regular capacity, 0.50 at total capacity, piecewise linear with the knee at
+    // regular. Single punishment: this factor is the ONLY cargo penalty; cargo mass is flat.
+    LOAD_FACTOR_AT_CAPACITY: 0.85,
+    LOAD_FACTOR_AT_TOTAL: 0.50,
   },
   DRONES: {
     SPEED: 2.5,

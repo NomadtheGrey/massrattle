@@ -98,8 +98,9 @@ export interface ShipPhysicsContext {
   /** The analog stick vector + magnitude, resolved by the loop. */
   stick: { x: number; y: number } | null;
   stickDist: number;
-  /** The overload speed multiplier (loop's cargo math, this frame). */
-  speedMult: number;
+  /** The load factor (loop's pinned 85/50 curve, this frame): effective thrust speed as a
+   * fraction of empty — 1.0 at empty, 0.85 at regular capacity, 0.50 at total capacity. */
+  loadFactor: number;
   /** Defense-derived factors (loop-resolved): Armor Plating thrust,
    * Grav Dampers gravity. */
   thrustFactor: number;
@@ -116,14 +117,41 @@ export interface ShipPhysicsResult {
 }
 
 /**
+ * The pinned load curve (Adam, 2026-10-25): effective thrust speed as a fraction of empty.
+ * Piecewise linear with the knee at regular capacity — 1.0 at empty, LOAD_FACTOR_AT_CAPACITY
+ * (0.85) at regular, LOAD_FACTOR_AT_TOTAL (0.50) at total — clamped at the floor beyond
+ * total (carrying cannot exceed total through capped paths, so the clamp is defensive).
+ * With flat cargo mass, the factor IS the effective-speed fraction: terminal = 1.875 × factor.
+ * Single punishment: this is the only cargo penalty anywhere in the physics step.
+ */
+export const loadFactorFor = (carrying: number, regularCapacity: number, totalCapacity: number): number => {
+  const atCap = PHYSICS.CARGO.LOAD_FACTOR_AT_CAPACITY;
+  const atTotal = PHYSICS.CARGO.LOAD_FACTOR_AT_TOTAL;
+  if (carrying <= 0) return 1.0;
+  if (carrying <= regularCapacity) {
+    if (regularCapacity <= 0) return 1.0;
+    return 1.0 - (1.0 - atCap) * (carrying / regularCapacity);
+  }
+  const span = totalCapacity - regularCapacity;
+  if (span <= 0) return atCap;
+  if (carrying >= totalCapacity) return atTotal;
+  return atCap - (atCap - atTotal) * ((carrying - regularCapacity) / span);
+};
+
+/**
  * The local ship's physics step: "2. Physics (Mass Scaling)" from
  * the loop, verbatim. Mutates `ship` in place; the only value handed
  * back is the frame's VAC-active flag.
  */
 export const stepShipPhysics = (ctx: ShipPhysicsContext): ShipPhysicsResult => {
-  const { ship, simSeats, star, enemyStar, keys, touchInputs, stick, stickDist, speedMult, thrustFactor, gravFactor, hyId, hyTier } = ctx;
+  const { ship, simSeats, star, enemyStar, keys, touchInputs, stick, stickDist, loadFactor, thrustFactor, gravFactor, hyId, hyTier } = ctx;
   // 2. Physics (Mass Scaling)
-  const currentMass = PHYSICS.SHIP_MASS + (ship.carrying * PHYSICS.MASS_PER_CARGO);
+  // SINGLE PUNISHMENT (Adam pin, 2026-10-25): cargo mass is FLAT — the 85/50 curve rides
+  // the load factor on thrust alone (below), never mass + thrust stacked. Gravity and sail
+  // divide by the same flat mass, so a loaded ship gravitates/sails like an empty one;
+  // only thrust-terminal follows the curve. (The turn divisor below is untouched: rotation
+  // still scales with carrying — not part of the speed pin.)
+  const currentMass = PHYSICS.SHIP_MASS;
   // TURN FACTOR (Adam, 2026-10-21): the type's base turning
   // character scales the base rotation speed; handling upgrades
   // still add their flat bonus on top, and the cargo-mass divisor
@@ -150,7 +178,7 @@ export const stepShipPhysics = (ctx: ShipPhysicsContext): ShipPhysicsResult => {
   }
 
   if (ship.thrust) {
-    const currentThrust = (PHYSICS.THRUST_POWER + ship.upgrades.thrust * 0.08) * speedMult * thrustFactor;
+    const currentThrust = (PHYSICS.THRUST_POWER + ship.upgrades.thrust * 0.08) * loadFactor * thrustFactor;
     // Accel = Force / Mass
     ship.vel.x += (Math.cos(ship.angle) * currentThrust) / currentMass;
     ship.vel.y += (Math.sin(ship.angle) * currentThrust) / currentMass;
