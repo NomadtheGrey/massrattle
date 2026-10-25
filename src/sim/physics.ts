@@ -236,7 +236,7 @@ export const stepShipPhysics = (ctx: ShipPhysicsContext): ShipPhysicsResult => {
   ship.vel.y *= currentFriction;
 
   // Cap Velocity
-  const currentMaxVel = PHYSICS.MAX_VELOCITY + ship.upgrades.thrust * 0.5;
+  const currentMaxVel = PHYSICS.MAX_VELOCITY + ship.upgrades.thrust * PHYSICS.THRUST_SPD_STEP;
   const currentVel = Math.sqrt(ship.vel.x ** 2 + ship.vel.y ** 2);
   if (currentVel > currentMaxVel) {
     const ratio = currentMaxVel / currentVel;

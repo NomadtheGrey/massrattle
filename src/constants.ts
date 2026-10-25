@@ -8,13 +8,20 @@ export const PHYSICS = {
   DELIVERY_RADIUS: 80,
   MAX_VELOCITY: 8.0, // SKIFF SPD (Adam, 2026-10-25 — pinned by
   // screenshot): the fresh Skiff's strip tile reads SPD 8.0.
+  // SPD STEP (Adam, 2026-10-25 13:12 ruling): each thrust-track
+  // level adds this much top speed — 1.0, was 0.5. The law AND
+  // the displays read this one constant (physics cap + HUD
+  // gauges + THRUST tile), so display = law by construction.
   // The tile quotes this cap (cap = MAX_VELOCITY + thrust x
-  // 0.5), so the cap IS the law the display reads — global
-  // base, every seat starts as Skiff. NOTE: thrust-only flight
-  // never reaches the cap (0.3 / mass 4.0 against 0.96 friction
+  // THRUST_SPD_STEP), so the cap IS the law the display reads —
+  // global base, every seat starts as Skiff. Standing
+  // consequence, uncorrected by Adam: crown top speeds rise to
+  // ~24–27 (thrust caps 16–19). NOTE: thrust-only flight never
+  // reaches the cap (0.3 / mass 4.0 against 0.96 friction
   // settles near 1.8); the cap governs gravity/sail-assisted
   // top speed. Faster get-up-and-go would be a THRUST_POWER
   // change, a different commission, not this one.
+  THRUST_SPD_STEP: 1.0,
   DUST_ATTRACT_FORCE: 0.1,
   ACTIVE_VAC_MULTIPLIER: 6.0,
   BASE_ATTRACT_RADIUS: 140,

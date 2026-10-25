@@ -58,7 +58,7 @@ export const BOT_DRIVER = {
    *  Bot SHIPS cap by rung (BOT_DIFFICULTY.maxSpeed) instead; the
    *  IMPOSSIBLE rung (4.2) is today's bot-ship cap, preserved.
    *  (The old comment claiming a player cap of 5 was stale —
-   *  PHYSICS.MAX_VELOCITY is 8.0 + 0.5/thrust.) */
+   *  PHYSICS.MAX_VELOCITY is 8.0 + THRUST_SPD_STEP/thrust.) */
   MAX_SPEED: 4.2,
   /** Acceleration along the ship's facing (units/frame^2). */
   ACCEL: 0.22,
