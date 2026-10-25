@@ -1578,7 +1578,7 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
       const frameNowEpoch = Date.now();
       setState(prev => {
         const next = { ...prev };
-        const ship = { ...next.ship };
+        let ship = { ...next.ship };
         const star = { ...next.star };
         const enemyStar = { ...next.enemyStar };
         next.projectiles = [...prev.projectiles];
@@ -2667,6 +2667,18 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
           for (const seat of simSeats) {
             if (respawnDue(seat, time)) {
               const arrived = completeRespawn(seat);
+              // PAID ARRIVAL LANDS ON THE TOP LEVEL (MP bank wipe,
+              // Adam, 2026-10-25): the frame return carries the
+              // working-copy `ship`, and the next frame's rebuild
+              // wraps it back into the local seat — so a paid
+              // frame that lands on the seat record alone is
+              // overwritten by the dead stand-in next frame, and
+              // the sweep re-kills it (health <= 0): 25% tax plus
+              // a new repurchase price every cycle, bleeding the
+              // bank out. The free floor never hit this (its
+              // callback sets the top level at once); the paid
+              // arrival must do the same here.
+              if (arrived && seat.ownerId === localOwnerId) ship = arrived;
               // SOLO CONTINUE: a paid frame landing for the
               // local solo seat ends game over — the death screen
               // closes and the fresh starter flies. Hosted seats
