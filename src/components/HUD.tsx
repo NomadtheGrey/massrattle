@@ -418,9 +418,15 @@ export const HUD: React.FC<HUDProps> = ({
   // ship.size + ESCORT_DOCK_PAD, health below the kind's cap).
   const repairCapPct = healCapPctFor(shipLine, typeTier);
   const repairCeilingPct = Math.round(repairCapPct * 100);
+  // HULL POINTS (Adam, 2026-10-25): health is ABSOLUTE HP (base
+  // + 10/hull step), not a percentage — the old code printed it
+  // with a '%' and width'd bars by it, reading over 100% after
+  // any hull step. hullFrac is the true fraction of max, used
+  // for every bar width, low-hull pulse, and repair-cap test.
+  const hullFrac = shipHealth / Math.max(1, maxShipHealth);
   const repairRate = healRateFor(shipLine, typeTier);
   const repairingOn = ship.repairing !== false;
-  const activelyRepairing = repairingOn && shipHealth < repairCeilingPct && carrying > 0;
+  const activelyRepairing = repairingOn && hullFrac < repairCapPct && carrying > 0;
   const dockedWorkforce = drones.filter(d => d.ownerId === ship.ownerId && !d.starFleet && d.mode !== 'defense' && d.state === 'docked').length;
   const escortDockedFor = (kind: EscortKind): number => escorts.filter(e => e.ownerId === ship.ownerId && escortKindOf(e) === kind
     && e.health < e.maxHealth * healCapPctFor(e.line, e.typeTier)
@@ -1019,11 +1025,11 @@ export const HUD: React.FC<HUDProps> = ({
             to the field. The hull bar keeps its amber cap tick;
             STAR LVL was a duplicate of row 1's M-level and goes. */}
         <div className="flex items-center gap-2 mt-0.5 text-[8px] font-mono whitespace-nowrap">
-          <span className={shipHealth < 30 ? 'text-red-500 animate-pulse font-bold' : 'text-zinc-400'}>HULL {Math.floor(shipHealth)}%</span>
+          <span className={hullFrac < 0.30 ? 'text-red-500 animate-pulse font-bold' : 'text-zinc-400'}>HULL {Math.floor(shipHealth)}/{maxShipHealth}</span>
           <div className="vu-meter w-14 h-1.5 bg-zinc-900 border border-zinc-800 relative shrink-0">
             <motion.div
-              className={`h-full ${shipHealth < 30 ? 'bg-red-600' : 'bg-cyan-500 shadow-[0_0_6px_cyan]'}`}
-              animate={{ width: `${shipHealth}%` }}
+              className={`h-full ${hullFrac < 0.30 ? 'bg-red-600' : 'bg-cyan-500 shadow-[0_0_6px_cyan]'}`}
+              animate={{ width: `${hullFrac * 100}%` }}
             />
             <div className="absolute top-0 bottom-0 w-[2px] bg-amber-400" style={{ left: `${repairCeilingPct}%` }} />
           </div>
@@ -1207,13 +1213,13 @@ export const HUD: React.FC<HUDProps> = ({
             <div className="text-[11px] leading-relaxed space-y-2 font-mono">
               <div className="mb-4">
                 <div className="flex justify-between text-[9px] mb-1">
-                  <span className={shipHealth < 30 ? 'text-red-500 animate-pulse' : 'text-zinc-200'}>HULL_INTEGRITY</span>
-                  <span>{Math.floor(shipHealth)}% · CAP {repairCeilingPct}%</span>
+                  <span className={hullFrac < 0.30 ? 'text-red-500 animate-pulse' : 'text-zinc-200'}>HULL_INTEGRITY</span>
+                  <span>{Math.floor(shipHealth)}/{maxShipHealth} · CAP {repairCeilingPct}%</span>
                 </div>
                 <div className="vu-meter h-3 bg-zinc-900 border border-zinc-800 relative">
                   <motion.div 
-                    className={`h-full ${shipHealth < 30 ? 'bg-red-600' : 'bg-cyan-600 shadow-[0_0_8px_cyan]'}`}
-                    animate={{ width: `${shipHealth}%` }}
+                    className={`h-full ${hullFrac < 0.30 ? 'bg-red-600' : 'bg-cyan-600 shadow-[0_0_8px_cyan]'}`}
+                    animate={{ width: `${hullFrac * 100}%` }}
                   />
                   <div className="absolute top-0 bottom-0 w-[2px] bg-amber-400" style={{ left: `${repairCeilingPct}%` }} />
                 </div>
@@ -2207,7 +2213,7 @@ export const HUD: React.FC<HUDProps> = ({
                       ? `PATCHING FROM THE HOLD NOW — ${repairRate} HP/S UNTIL THE CAP OR AN EMPTY HOLD.`
                       : !repairingOn
                         ? 'REPAIRS OFF — YOUR HULL WILL NOT PATCH. NOTE: A DOCKED HARVESTER STILL DRAWS THE HOLD TO PATCH ITSELF; THE TOGGLE GOVERNS YOUR HULL, NOT THE DOCK.'
-                        : shipHealth >= repairCeilingPct
+                        : hullFrac >= repairCapPct
                           ? 'NOTHING TO PATCH — THE HULL STANDS AT ITS REPAIR CAP. DAMAGE BELOW THE CAP NEVER HEALS.'
                           : 'HOLD EMPTY — NOTHING TO PATCH WITH. CARRY SCRAP AND THE CREWS GO TO WORK.'}
                   </p>
