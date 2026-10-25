@@ -5,6 +5,7 @@ import { milestonesForInfused, progressIntoNextMilestone, nextMilestoneCost, cum
 import { starDroneTargetForMilestones, starDroneRangeForTarget } from '../starFleet';
 import { reconcileSwitch } from '../switchReconcile';
 import { ESCORT_DOCK_PAD } from '../sim/repair';
+import { loadFactorFor } from '../sim/physics';
 import { harborCapacityFor, harborMultiplierFor, canDockAt, guestsOf, HARBOR_DOCK_RANGE } from '../sim/harbor';
 import { areTeammates } from '../sim/teams';
 import type { Ship, Harvester, EscortShip, SeatSimState } from '../types';
@@ -553,6 +554,15 @@ export const HUD: React.FC<HUDProps> = ({
   // changes.)
   const isOverloaded = carrying > holdRegular;
   const holdTotal = totalCapacityFor(ship);
+  // TURN DISPLAY MIRROR (Adam, 2026-10-25): raw turn rate /
+  // load-modified rate, modified in red when the load reduces
+  // it — the Thrust tile's pattern. Modified = raw ×
+  // loadFactorFor, the same function BG's turn-mirror uses
+  // (rotation × loadFactorFor, d2522f3), so display = law.
+  // Condition is load-reduces (factor < 1, i.e. any load),
+  // per Adam's wording — not the Thrust tile's overload zone.
+  const turnRaw = (PHYSICS.ROTATION_SPEED * progType.turnFactor + upgrades.handling * 0.005) * 60 * 180 / Math.PI;
+  const turnLoad = loadFactorFor(carrying, regularCapacityFor(ship), totalCapacityFor(ship));
   // Star growth readouts follow the RISING milestone costs (starGrowth.ts):
   // progress is scrap into the CURRENT milestone, judged against that
   // milestone's own cost — e.g. 40/125 while working on M2, not x/100.
@@ -1795,7 +1805,7 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
         {[
           { icon: '🚀', name: 'THRUST', base: PHYSICS.UPGRADE_COSTS.THRUST, lvl: upgrades.thrust, cap: caps.thrust, stat: isOverloaded ? <>SPD {topSpeed.toFixed(1)} / <span className="text-red-500">{velocity.toFixed(1)}</span></> : `SPD ${topSpeed.toFixed(1)}` },
-          { icon: '🕹️', name: 'TURN', base: PHYSICS.UPGRADE_COSTS.HANDLING, lvl: upgrades.handling, cap: caps.handling, stat: `${Math.round((PHYSICS.ROTATION_SPEED * progType.turnFactor + upgrades.handling * 0.005) * 60 * 180 / Math.PI)}°/S` },
+          { icon: '🕹️', name: 'TURN', base: PHYSICS.UPGRADE_COSTS.HANDLING, lvl: upgrades.handling, cap: caps.handling, stat: turnLoad < 1 ? <>{Math.round(turnRaw)}°/S / <span className="text-red-500">{Math.round(turnRaw * turnLoad)}°/S</span></> : `${Math.round(turnRaw)}°/S` },
           { icon: '🧲', name: 'VAC', base: PHYSICS.UPGRADE_COSTS.ATTRACTOR, lvl: upgrades.attractor, cap: caps.vac, stat: `${PHYSICS.BASE_ATTRACT_RADIUS + upgrades.attractor * 35}U` },
           { icon: '⚡', name: 'FUEL', base: PHYSICS.UPGRADE_COSTS.FUEL, lvl: upgrades.fuelCap, cap: caps.fuel, stat: `${maxFuel}` },
           { icon: '📦', name: 'HOLD', base: PHYSICS.UPGRADE_COSTS.CARGO, lvl: upgrades.cargo, cap: caps.cargo, stat: `${regularCapacityFor(ship)}U` },
