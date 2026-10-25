@@ -268,6 +268,15 @@ export const stepDrones = (ctx: DroneStepContext): DroneStepResult => {
       if (closestScrap) {
         drone.targetId = (closestScrap as any).id;
         drone.state = 'collecting';
+      } else if (!drone.starFleet) {
+        // HARVESTER DRIFT (Adam, 2026-10-25): a targetless workforce drone no longer
+        // freezes in the field — it idles in slow circles (bounded by construction:
+        // circle radius = drift speed / turn rate) until scrap appears, when the next
+        // frame's searching branch acquires it as usual. Star-fleet drones keep their
+        // existing stillness (not Adam's repro; fleet behavior untouched).
+        drone.angle += PHYSICS.DRONES.DRIFT_TURN_RATE;
+        drone.pos.x += Math.cos(drone.angle) * droneSpeed * PHYSICS.DRONES.DRIFT_SPEED_FRACTION;
+        drone.pos.y += Math.sin(drone.angle) * droneSpeed * PHYSICS.DRONES.DRIFT_SPEED_FRACTION;
       }
     }
 

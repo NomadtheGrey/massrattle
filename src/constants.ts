@@ -62,6 +62,10 @@ export const PHYSICS = {
     CAPACITY: 5,
     COLLECT_RADIUS: 40,
     DEPOSIT_RADIUS: 80,
+    // HARVESTER DRIFT (Adam, 2026-10-25): a targetless workforce drone idles in slow
+    // circles instead of freezing — circle radius = SPEED × fraction / turn rate.
+    DRIFT_SPEED_FRACTION: 0.3,
+    DRIFT_TURN_RATE: 0.02,
   },
   DEFENSE: {
     /** Turret engagement range, from the star's center: 1200 —
