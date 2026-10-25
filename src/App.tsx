@@ -204,7 +204,7 @@ export default function App() {
       <SoundLayer
         localOwnerId={localOwnerId}
         localShipPos={localSeat?.ship ? { x: localSeat.ship.pos.x, y: localSeat.ship.pos.y } : null}
-        localThrusting={!!localSeat?.ship.thrust}
+        localThrusting={!!localSeat?.ship?.thrust}
         chatLog={net.chatLog}
         isVictory={state.isVictory}
         isGameOver={state.isGameOver}
