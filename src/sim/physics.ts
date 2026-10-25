@@ -149,15 +149,16 @@ export const stepShipPhysics = (ctx: ShipPhysicsContext): ShipPhysicsResult => {
   // SINGLE PUNISHMENT (Adam pin, 2026-10-25): cargo mass is FLAT — the 85/50 curve rides
   // the load factor on thrust alone (below), never mass + thrust stacked. Gravity and sail
   // divide by the same flat mass, so a loaded ship gravitates/sails like an empty one;
-  // only thrust-terminal follows the curve. (The turn divisor below is untouched: rotation
-  // still scales with carrying — not part of the speed pin.)
+  // only thrust-terminal follows the curve. (Rotation mirrors the same load factor —
+  // see TURN below.)
   const currentMass = PHYSICS.SHIP_MASS;
-  // TURN FACTOR (Adam, 2026-10-21): the type's base turning
-  // character scales the base rotation speed; handling upgrades
-  // still add their flat bonus on top, and the cargo-mass divisor
-  // is untouched. See ShipTypeDef.turnFactor in shipProgression.
+  // TURN MIRRORS MOVEMENT (Adam, 2026-10-25): rotation scales by the same piecewise
+  // load factor as thrust (1.0 empty, 0.85 at per-line regular, 0.50 at per-line total) —
+  // the old (1 + carrying × 0.05) divisor is gone. The handling bonus scales with load,
+  // as the thrust-track bonus does; the type's turnFactor character is untouched.
+  // Bots inherit automatically (remoteFrame runs this same step on the host).
   const turnFactor = typeFor(ship.line, ship.typeTier).turnFactor;
-  const currentRotSpeed = (PHYSICS.ROTATION_SPEED * turnFactor + ship.upgrades.handling * 0.005) / (1 + ship.carrying * 0.05);
+  const currentRotSpeed = (PHYSICS.ROTATION_SPEED * turnFactor + ship.upgrades.handling * 0.005) * loadFactor;
 
   if (keys.has('ArrowLeft') || keys.has('KeyA') || touchInputs.rotateLeft) {
     ship.angle -= currentRotSpeed;
