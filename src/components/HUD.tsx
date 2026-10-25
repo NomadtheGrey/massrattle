@@ -479,7 +479,7 @@ export const HUD: React.FC<HUDProps> = ({
   // Gauge scales follow the ship as upgraded (audit, 2026-10-20): the
   // velocity gauges top out at the CURRENT top speed, and the cargo-mass
   // gauge at the CURRENT hold including overload — not stock constants.
-  const topSpeed = PHYSICS.MAX_VELOCITY + upgrades.thrust * 0.5;
+  const topSpeed = PHYSICS.MAX_VELOCITY + upgrades.thrust * PHYSICS.THRUST_SPD_STEP;
   // PING readout (kept on Adam's word, 2026-10-20 — the slot is for
   // multiplayer): today it measures the LOCAL loop honestly — an EMA of
   // the frame interval, i.e. how long your own machine takes to answer
@@ -1680,7 +1680,7 @@ export const HUD: React.FC<HUDProps> = ({
           </div>
         </div>
         {[
-          { icon: '🚀', name: 'THRUST', base: PHYSICS.UPGRADE_COSTS.THRUST, lvl: upgrades.thrust, cap: caps.thrust, stat: `SPD ${(PHYSICS.MAX_VELOCITY + upgrades.thrust * 0.5).toFixed(1)}` },
+          { icon: '🚀', name: 'THRUST', base: PHYSICS.UPGRADE_COSTS.THRUST, lvl: upgrades.thrust, cap: caps.thrust, stat: `SPD ${(PHYSICS.MAX_VELOCITY + upgrades.thrust * PHYSICS.THRUST_SPD_STEP).toFixed(1)}` },
           { icon: '🕹️', name: 'TURN', base: PHYSICS.UPGRADE_COSTS.HANDLING, lvl: upgrades.handling, cap: caps.handling, stat: `${Math.round((PHYSICS.ROTATION_SPEED * progType.turnFactor + upgrades.handling * 0.005) * 60 * 180 / Math.PI)}°/S` },
           { icon: '🧲', name: 'VAC', base: PHYSICS.UPGRADE_COSTS.ATTRACTOR, lvl: upgrades.attractor, cap: caps.vac, stat: `${PHYSICS.BASE_ATTRACT_RADIUS + upgrades.attractor * 35}U` },
           { icon: '⚡', name: 'FUEL', base: PHYSICS.UPGRADE_COSTS.FUEL, lvl: upgrades.fuelCap, cap: caps.fuel, stat: `${maxFuel}` },
