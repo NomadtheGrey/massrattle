@@ -32,6 +32,16 @@ import { SHIP_LINES, typeFor, capsFor, typeStepPrice, hullStepPrice, hullSizeFor
 // never SAID it — locked weapons looked buyable and their buttons
 // died silently. These helpers turn the one table into words: what
 // this frame may mount, and exactly why a given weapon is locked.
+// TRACK NEXT COST (Adam, 2026-10-25 — track-tile prices):
+// the ONE price formula, shared by the workshop rows and the
+// strip tiles: the next level costs base + lvl x floor(base x
+// 0.5), read from PHYSICS.UPGRADE_COSTS — never a baked-in
+// number. (Was inline in the workshop rows only; the strip
+// tiles read it through this helper so the two can never
+// disagree.)
+const trackNextCost = (base: number, lvl: number): number =>
+  base + lvl * Math.floor(base * 0.5);
+
 const mountAccessLabel = (line: ShipLine | null, tier: TypeTier): string =>
   MOUNT_ACCESS[line ?? 'unaligned'][tier].map(c => c.toUpperCase()).join(' + ');
 const weaponGateReason = (line: ShipLine | null, tier: TypeTier, itemId: string): string | null => {
@@ -1256,7 +1266,7 @@ export const HUD: React.FC<HUDProps> = ({
                 { type: 'fuel' as const, label: 'Fuel', base: PHYSICS.UPGRADE_COSTS.FUEL, lvl: upgrades.fuelCap, cap: caps.fuel, key: '4' },
                 { type: 'cargo' as const, label: 'Cargo', base: PHYSICS.UPGRADE_COSTS.CARGO, lvl: upgrades.cargo, cap: caps.cargo, key: '5' }
               ].map(u => {
-                const cost = u.base + (u.lvl * Math.floor(u.base * 0.5));
+                const cost = trackNextCost(u.base, u.lvl);
                 return (
                   <button 
                     key={u.type}
@@ -1518,19 +1528,6 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
       )}
 
-      {/* REPAIR PILL: Damage Control's in-play switch — the mode
-          is a standing discipline (burn the hold on patches, or
-          don't), so it rides beside the decoy pill, stacked above
-          it when both show. State reads on the pill itself. */}
-      <div className={`fixed ${loadout.defense === 'decoy_beacon' && !decoyActive ? 'md:bottom-[112px]' : 'md:bottom-[76px]'} max-md:hidden left-1/2 -translate-x-1/2 z-[56] pointer-events-auto`}>
-        <button
-          onClick={() => onSetRepairing(!repairingOn)}
-          className={`hud-panel px-3 py-1.5 rounded border font-mono text-[10px] sm:text-[11px] font-bold tracking-wider ${activelyRepairing ? 'border-[#33ff33] text-[#33ff33] shadow-[0_0_10px_rgba(51,255,51,0.35)]' : repairingOn ? 'border-cyan-400 text-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.3)]' : 'border-zinc-700 text-zinc-500'}`}
-        >
-          🔧 REPAIR {activelyRepairing ? '· PATCHING' : repairingOn ? '· ON' : '· OFF'}
-        </button>
-      </div>
-
       {/* STATUS STRIP — slim indicators, TOP band (Adam, 2026-10-21:
           moved up from bottom-center, where it sat over the SHIP
           ENHANCEMENTS gauges). The top offset clears the MULTIPLAYER
@@ -1678,14 +1675,14 @@ export const HUD: React.FC<HUDProps> = ({
           </div>
         </div>
         {[
-          { icon: '🚀', name: 'THRUST', lvl: upgrades.thrust, cap: caps.thrust, stat: `SPD ${(PHYSICS.MAX_VELOCITY + upgrades.thrust * 0.5).toFixed(1)}` },
-          { icon: '🕹️', name: 'TURN', lvl: upgrades.handling, cap: caps.handling, stat: `${Math.round((PHYSICS.ROTATION_SPEED * progType.turnFactor + upgrades.handling * 0.005) * 60 * 180 / Math.PI)}°/S` },
-          { icon: '🧲', name: 'VAC', lvl: upgrades.attractor, cap: caps.vac, stat: `${PHYSICS.BASE_ATTRACT_RADIUS + upgrades.attractor * 35}U` },
-          { icon: '⚡', name: 'FUEL', lvl: upgrades.fuelCap, cap: caps.fuel, stat: `${maxFuel}` },
-          { icon: '📦', name: 'HOLD', lvl: upgrades.cargo, cap: caps.cargo, stat: `${PHYSICS.CARGO.BASE_CAPACITY + upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS}U` },
+          { icon: '🚀', name: 'THRUST', base: PHYSICS.UPGRADE_COSTS.THRUST, lvl: upgrades.thrust, cap: caps.thrust, stat: `SPD ${(PHYSICS.MAX_VELOCITY + upgrades.thrust * 0.5).toFixed(1)}` },
+          { icon: '🕹️', name: 'TURN', base: PHYSICS.UPGRADE_COSTS.HANDLING, lvl: upgrades.handling, cap: caps.handling, stat: `${Math.round((PHYSICS.ROTATION_SPEED * progType.turnFactor + upgrades.handling * 0.005) * 60 * 180 / Math.PI)}°/S` },
+          { icon: '🧲', name: 'VAC', base: PHYSICS.UPGRADE_COSTS.ATTRACTOR, lvl: upgrades.attractor, cap: caps.vac, stat: `${PHYSICS.BASE_ATTRACT_RADIUS + upgrades.attractor * 35}U` },
+          { icon: '⚡', name: 'FUEL', base: PHYSICS.UPGRADE_COSTS.FUEL, lvl: upgrades.fuelCap, cap: caps.fuel, stat: `${maxFuel}` },
+          { icon: '📦', name: 'HOLD', base: PHYSICS.UPGRADE_COSTS.CARGO, lvl: upgrades.cargo, cap: caps.cargo, stat: `${PHYSICS.CARGO.BASE_CAPACITY + upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS}U` },
         ].map(t => (
           <div key={t.name} className={`hud-panel px-1.5 py-0.5 rounded border border-zinc-800 text-center min-w-[56px] ${stripDetailShown ? '' : 'max-md:hidden'}${t.name === 'VAC' ? spot('vac') : ''}`}>
-            <div className="text-[8px] sm:text-[9px] font-mono text-zinc-300 tracking-widest whitespace-nowrap">{t.icon}<span className="max-sm:hidden"> {t.name} · L{t.lvl}/{t.cap}</span></div>
+            <div className="text-[8px] sm:text-[9px] font-mono text-zinc-300 tracking-widest whitespace-nowrap">{t.icon}<span className="max-sm:hidden"> {t.name} · L{t.lvl}/{t.cap}</span>{t.lvl >= t.cap ? <span className="text-zinc-500"> MAX</span> : <span className="text-amber-300"> ⬆{trackNextCost(t.base, t.lvl)}U</span>}</div>
             <div className="text-[9px] sm:text-[11px] font-mono font-bold text-zinc-50 leading-tight whitespace-nowrap">{t.stat}</div>
           </div>
         ))}
@@ -2257,7 +2254,7 @@ export const HUD: React.FC<HUDProps> = ({
                   { type: 'fuel' as const, label: 'Plasma Reserves', desc: 'Increases total fuel capacity', base: PHYSICS.UPGRADE_COSTS.FUEL, lvl: upgrades.fuelCap, cap: caps.fuel, icon: '⚡' },
                   { type: 'cargo' as const, label: 'Hull Expansion', desc: 'Increases max cargo hold capacity', base: PHYSICS.UPGRADE_COSTS.CARGO, lvl: upgrades.cargo, cap: caps.cargo, icon: '📦' }
                 ].map(u => {
-                  const cost = u.base + (u.lvl * Math.floor(u.base * 0.5));
+                  const cost = trackNextCost(u.base, u.lvl);
                   const maxed = u.lvl >= u.cap;
                   const canAfford = !maxed && funds >= cost;
                   return (

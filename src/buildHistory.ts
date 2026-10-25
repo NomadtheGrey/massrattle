@@ -17,6 +17,7 @@ export interface BuildEntry {
 }
 
 export const BUILD_HISTORY: BuildEntry[] = [
+  { date: '2026-10-25', ref: 'PR #71', title: 'LIBRARY ROUND: TRACK PRICES, REPAIR TOP, SOUND PAIR, SOLO CONTINUE, SKIFF SPD', detail: 'Strip tiles show next-track prices and the REPAIR switch moves to the top row; fire sound gets a shorter louder crack and the emission fix that makes every shot sound; solo death gains Continue under full repurchase law with HULL BREACH doors, and the fresh Skiff reads SPD 8.0.' },
   { date: '2026-10-24', ref: 'PR #69', title: 'TURRET FLAGS, DEATH-LOOP FIX', detail: 'Click a turret to target it, destroyed hubs draw as wrecks instead of live guns, and turret locks get their amber bracket — and dying in solo no longer loops you back into enemy territory: the save clears at game over, so a fresh match starts at the home star.' },
   { date: '2026-10-24', ref: 'PR #67', title: 'TURRETS, HITTABLE', detail: 'Star guns can now be shot out: turrets take damage, go dark when destroyed, and rebuild one at a time every thirty seconds. Tab targeting includes turrets, and bot captains differ in whether they hunt them.' },
   { date: '2026-10-24', ref: 'PR #65', title: 'FEEDBACK TEMPLATE FIX', detail: 'The feedback form’s first live send was refused because it named a template that doesn’t exist — the form now points at the mailbox’s real template, so notes should send.' },

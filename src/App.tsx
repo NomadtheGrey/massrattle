@@ -16,7 +16,7 @@ import { SoundLayer } from './components/AudioLayer';
 import { ChatPanel } from './components/ChatPanel';
 import { useNetClient, NetSessionContext } from './net/useNetClient';
 import { RepurchaseOverlay } from './components/RepurchaseOverlay';
-import { repurchasePriceFor } from './sim/deathEconomy';
+import { repurchasePriceFor, respawnWaitMsFor } from './sim/deathEconomy';
 import { escortKindOf, healCapPctFor } from './shipProgression';
 
 export default function App() {
@@ -140,6 +140,30 @@ export default function App() {
   }, [seatLabels, soloCallsign, localOwnerId, state.seats]);
 
   const localSeat = state.seats.find(seat => seat.ownerId === localOwnerId);
+  // SOLO CONTINUE (Adam, 2026-10-25 — hull breach doors): the
+  // defeat doors read the loop's death-economy seat — never
+  // localSeatDead (room-only by construction). Continue is
+  // offered only for a solo, shipless, non-eliminated seat
+  // with a real death behind it; price and wait come from
+  // the sim's own functions, so the door quotes exactly what
+  // repurchaseShip will charge and stamp. Start Over keeps
+  // the existing reload path (the save is already cleared at
+  // death, so reload boots a fresh match by construction).
+  const soloSeatForContinue = !net.room ? state.seats.find(seat => seat.ownerId === localOwnerId) : undefined;
+  const soloContinue = soloSeatForContinue && state.isGameOver && !state.isVictory && !soloSeatForContinue.ship && !soloSeatForContinue.eliminated && (soloSeatForContinue.deaths ?? 0) > 0
+    ? {
+        price: repurchasePriceFor(soloSeatForContinue.bankedScrap, soloSeatForContinue.deaths),
+        bankedScrap: soloSeatForContinue.bankedScrap,
+        waitMs: respawnWaitMsFor(soloSeatForContinue.deaths, soloSeatForContinue.survivalMs ?? 0),
+        respawnAt: soloSeatForContinue.respawnAt ?? null,
+        onContinue: () => repurchaseShip(localOwnerId),
+      }
+    : null;
+  // REPAIR TOP BUTTON (Adam, 2026-10-25 — quibble #2): the
+  // in-play switch's state, same expressions HUD's old bottom
+  // pill read — the button itself sits in the mode-pill row.
+  const repairOnTop = state.ship.repairing !== false;
+  const repairPatchingTop = repairOnTop && state.ship.health < state.ship.maxHealth * healCapPctFor(state.ship.line, state.ship.typeTier) && state.ship.carrying > 0;
   // DEATH TAX display feed (Adam, 2026-10-21): the seat's redeploy
   // deadline (BackGround's death-tax sim, seat.respawnAt — landed
   // 33570ec; the wait is respawnWaitMsFor in sim/deathEconomy.ts).
@@ -213,6 +237,20 @@ export default function App() {
               <span className="bg-[#33ff33] text-zinc-950 px-1.5 py-0.5 rounded-full">☀ SOLO</span>
             </>
           )}
+        </button>
+        {/* REPAIR TOGGLE, TOP ROW (Adam, 2026-10-25 — quibble #2):
+            the in-play switch moves out of the bottom pill stack
+            (where it obscured the strip's 1–5 track tiles) to sit
+            beside the mode pill. Same toggle, same states, same
+            verb — R still works, the workshop doors still work,
+            the phone's action-cluster tile still works. */}
+        <button
+          type="button"
+          onClick={() => setRepairing(!repairOnTop)}
+          title="Toggle hull repair (R)"
+          className={`px-3 py-1.5 rounded-full bg-zinc-900/70 border font-mono text-[10px] font-bold tracking-widest active:scale-95 touch-manipulation ${repairPatchingTop ? 'border-[#33ff33] text-[#33ff33] shadow-[0_0_10px_rgba(51,255,51,0.25)]' : repairOnTop ? 'border-cyan-400 text-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.25)]' : 'border-zinc-600 text-zinc-500'}`}
+        >
+          🔧 REPAIR {repairPatchingTop ? '· PATCHING' : repairOnTop ? '· ON' : '· OFF'}
         </button>
         {net.room && (
           <button
@@ -297,6 +335,7 @@ export default function App() {
         teamScrap={state.teamScrap}
         totalScrapInfused={state.star.totalScrapInfused}
         onRestart={restart}
+        soloContinue={soloContinue}
       />
       
       {/* HUD Overlay */}

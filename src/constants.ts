@@ -6,7 +6,15 @@ export const PHYSICS = {
   SHIP_MASS: 4.0,
   MIN_DIST_STAR: 30,
   DELIVERY_RADIUS: 80,
-  MAX_VELOCITY: 7.5,
+  MAX_VELOCITY: 8.0, // SKIFF SPD (Adam, 2026-10-25 — pinned by
+  // screenshot): the fresh Skiff's strip tile reads SPD 8.0.
+  // The tile quotes this cap (cap = MAX_VELOCITY + thrust x
+  // 0.5), so the cap IS the law the display reads — global
+  // base, every seat starts as Skiff. NOTE: thrust-only flight
+  // never reaches the cap (0.3 / mass 4.0 against 0.96 friction
+  // settles near 1.8); the cap governs gravity/sail-assisted
+  // top speed. Faster get-up-and-go would be a THRUST_POWER
+  // change, a different commission, not this one.
   DUST_ATTRACT_FORCE: 0.1,
   ACTIVE_VAC_MULTIPLIER: 6.0,
   BASE_ATTRACT_RADIUS: 140,

@@ -865,10 +865,13 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
    * the session adapter's consumeRepurchaseIntent — the same
    * tryRepurchase, so a repurchase is a repurchase regardless of
    * whose finger sent it). On a guest client this callback stays
-   * a no-op. In single-player it is likewise inert:
-   * SP seats are never death-economy shipless (the local death is
-   * game over; the enemy seat never flew) and tryRepurchase
-   * refuses them.
+   * a no-op. In single-player it serves SOLO CONTINUE (Adam,
+   * 2026-10-25): the solo death now cascades like a hosted one,
+   * so the seat IS death-economy shipless and tryRepurchase
+   * accepts it — free floor lands at once and ends game over,
+   * paid serves the death-tax wait and the arrival tick ends it.
+   * (Before Continue, SP seats were never shipless — the local
+   * death was game over and tryRepurchase refused them.)
    */
   /**
    * Build ONE defense drone (Arsenal slice 3, 2026-10-21 — Adam's
@@ -1068,6 +1071,10 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
           // The free floor's ship arrives in bought.ship at once.
           ship: bought.ship ?? prev.ship,
           bankedScrap: seat.bankedScrap,
+          // SOLO CONTINUE: a free frame landing for a solo seat
+          // ends game over at once. A paid frame keeps game over
+          // until the arrival tick lands it (below).
+          ...(bought.ship && !session?.room ? { isGameOver: false } : {}),
         };
       }
       return { ...prev, seats, eventFeed };
@@ -1573,6 +1580,18 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
         const ship = { ...next.ship };
         const star = { ...next.star };
         const enemyStar = { ...next.enemyStar };
+        next.projectiles = [...prev.projectiles];
+        // SOUND FIX (2026-10-25): copy-on-write for projectiles.
+        // The frame used to push new bolts into next.projectiles
+        // while it still WAS prev.projectiles (shallow copy), so
+        // the previous state's array already contained each bolt
+        // and the frame-boundary diff never saw a new id — fire
+        // events emitted only when a render lagged a frame and a
+        // bolt landed in a non-first updater (hence ~1-in-3-4 on
+        // a slow machine, not 1-in-1). The copy restores the
+        // diff's invariant for every push site below (player,
+        // bot, escort, turret); stepProjectiles still replaces
+        // the array with its fresh filtered result afterwards.
 
         // PER-SEAT PROJECTION (Phase 2, P2-2b): rebuild the seat
         // records around this frame's working copies, so everything
@@ -2316,7 +2335,11 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
         // death is NOT game over — the death sweep below runs the
         // bank-loss cascade and the seat plays on shipless until
         // repurchase. The shipped isGameOver stands wherever no
-        // match is hosted (single-player, lobby backdrop).
+        // match is hosted (single-player, lobby backdrop) — and
+        // since SOLO CONTINUE (Adam, 2026-10-25) the solo seat
+        // cascades in the seat loop below exactly like a hosted
+        // one, so isGameOver now means "dead, awaiting Continue
+        // or Start Over", not "match over".
         if (ship.health <= 0 && !next.isGameOver && !hosting) {
           next.isGameOver = true;
           // DEATH-LOOP FIX (Adam, 2026-10-24): solo game over
@@ -2541,7 +2564,16 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
           const bs = seat.ship;
           if (!bs || bs.health > 0) continue;
           const isLocalSeat = seat.ownerId === localOwnerId;
-          if (isLocalSeat && !hosting) continue;
+          // SOLO CONTINUE (Adam, 2026-10-25): the local seat's
+          // death used to skip the cascade in single-player
+          // (death was game over, bank gone). Now it cascades
+          // exactly like a hosted death — kill credit, cargo
+          // drop, salvage roll, 25% bank loss, death count,
+          // shipLostAt, shipless seat — so Continue can buy the
+          // frame back under full repurchase law. Room contexts
+          // (lobby backdrop) still skip: only a room-less solo
+          // match cascades here. Guests never reach this block.
+          if (isLocalSeat && !hosting && frameRoom) continue;
           const killerOwnerId =
             bs.lastHitByOwnerId && bs.lastHitByOwnerId !== seat.ownerId
               ? bs.lastHitByOwnerId
@@ -2632,7 +2664,15 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
           // frame lands when its respawn wait elapses. Payment was
           // recorded at purchase; arrival itself is silent.
           for (const seat of simSeats) {
-            if (respawnDue(seat, time)) completeRespawn(seat);
+            if (respawnDue(seat, time)) {
+              const arrived = completeRespawn(seat);
+              // SOLO CONTINUE: a paid frame landing for the
+              // local solo seat ends game over — the death screen
+              // closes and the fresh starter flies. Hosted seats
+              // never set isGameOver, so this is solo-only in
+              // effect; the room guard keeps it that way.
+              if (arrived && seat.ownerId === localOwnerId && !frameRoom) next.isGameOver = false;
+            }
           }
           for (const seat of simSeats) {
             if (!botRepurchaseDue(seat, time)) continue;
