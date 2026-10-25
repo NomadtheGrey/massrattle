@@ -140,6 +140,11 @@ export default function App() {
   }, [seatLabels, soloCallsign, localOwnerId, state.seats]);
 
   const localSeat = state.seats.find(seat => seat.ownerId === localOwnerId);
+  // REPAIR TOP BUTTON (Adam, 2026-10-25 — quibble #2): the
+  // in-play switch's state, same expressions HUD's old bottom
+  // pill read — the button itself sits in the mode-pill row.
+  const repairOnTop = state.ship.repairing !== false;
+  const repairPatchingTop = repairOnTop && state.ship.health < state.ship.maxHealth * healCapPctFor(state.ship.line, state.ship.typeTier) && state.ship.carrying > 0;
   // DEATH TAX display feed (Adam, 2026-10-21): the seat's redeploy
   // deadline (BackGround's death-tax sim, seat.respawnAt — landed
   // 33570ec; the wait is respawnWaitMsFor in sim/deathEconomy.ts).
@@ -213,6 +218,20 @@ export default function App() {
               <span className="bg-[#33ff33] text-zinc-950 px-1.5 py-0.5 rounded-full">☀ SOLO</span>
             </>
           )}
+        </button>
+        {/* REPAIR TOGGLE, TOP ROW (Adam, 2026-10-25 — quibble #2):
+            the in-play switch moves out of the bottom pill stack
+            (where it obscured the strip's 1–5 track tiles) to sit
+            beside the mode pill. Same toggle, same states, same
+            verb — R still works, the workshop doors still work,
+            the phone's action-cluster tile still works. */}
+        <button
+          type="button"
+          onClick={() => setRepairing(!repairOnTop)}
+          title="Toggle hull repair (R)"
+          className={`px-3 py-1.5 rounded-full bg-zinc-900/70 border font-mono text-[10px] font-bold tracking-widest active:scale-95 touch-manipulation ${repairPatchingTop ? 'border-[#33ff33] text-[#33ff33] shadow-[0_0_10px_rgba(51,255,51,0.25)]' : repairOnTop ? 'border-cyan-400 text-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.25)]' : 'border-zinc-600 text-zinc-500'}`}
+        >
+          🔧 REPAIR {repairPatchingTop ? '· PATCHING' : repairOnTop ? '· ON' : '· OFF'}
         </button>
         {net.room && (
           <button

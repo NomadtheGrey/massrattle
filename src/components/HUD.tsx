@@ -1528,19 +1528,6 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
       )}
 
-      {/* REPAIR PILL: Damage Control's in-play switch — the mode
-          is a standing discipline (burn the hold on patches, or
-          don't), so it rides beside the decoy pill, stacked above
-          it when both show. State reads on the pill itself. */}
-      <div className={`fixed ${loadout.defense === 'decoy_beacon' && !decoyActive ? 'md:bottom-[112px]' : 'md:bottom-[76px]'} max-md:hidden left-1/2 -translate-x-1/2 z-[56] pointer-events-auto`}>
-        <button
-          onClick={() => onSetRepairing(!repairingOn)}
-          className={`hud-panel px-3 py-1.5 rounded border font-mono text-[10px] sm:text-[11px] font-bold tracking-wider ${activelyRepairing ? 'border-[#33ff33] text-[#33ff33] shadow-[0_0_10px_rgba(51,255,51,0.35)]' : repairingOn ? 'border-cyan-400 text-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.3)]' : 'border-zinc-700 text-zinc-500'}`}
-        >
-          🔧 REPAIR {activelyRepairing ? '· PATCHING' : repairingOn ? '· ON' : '· OFF'}
-        </button>
-      </div>
-
       {/* STATUS STRIP — slim indicators, TOP band (Adam, 2026-10-21:
           moved up from bottom-center, where it sat over the SHIP
           ENHANCEMENTS gauges). The top offset clears the MULTIPLAYER
