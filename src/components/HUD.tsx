@@ -5,6 +5,7 @@ import { milestonesForInfused, progressIntoNextMilestone, nextMilestoneCost, cum
 import { starDroneTargetForMilestones, starDroneRangeForTarget } from '../starFleet';
 import { reconcileSwitch } from '../switchReconcile';
 import { ESCORT_DOCK_PAD } from '../sim/repair';
+import { loadFactorFor } from '../sim/physics';
 import { harborCapacityFor, harborMultiplierFor, canDockAt, guestsOf, HARBOR_DOCK_RANGE } from '../sim/harbor';
 import { areTeammates } from '../sim/teams';
 import type { Ship, Harvester, EscortShip, SeatSimState } from '../types';
@@ -21,9 +22,9 @@ import type { StarStage } from '../net/protocol';
 import { STAGE_LABELS, TEAM_LABELS, TEAM_COLORS } from './lobby/lobbyTypes';
 import type { TeamId } from '../net/protocol';
 import { MechanicsGuide } from './MechanicsGuide';
-import { LOADOUT_ITEMS, getLoadoutItem, itemTierCost, swapCostForTier, MAX_ITEM_TIER, ArsenalCategory, shieldMaxFor, MOUNT_ACCESS, canMountWeapon, weaponClassFor, WEAPON_SELECT_ORDER, weaponIdForSelectSlot, type WeaponClass } from '../loadout';
+import { LOADOUT_ITEMS, getLoadoutItem, itemTierCost, swapCostForTier, MAX_ITEM_TIER, ArsenalCategory, shieldMaxFor, MOUNT_ACCESS, canMountWeapon, weaponClassFor, WEAPON_SELECT_ORDER, weaponIdForSelectSlot, weaponStatsFor, type WeaponClass } from '../loadout';
 import { frameMaxed, nextStep, trackStatus, unlockLines } from '../progressionStatus';
-import { SHIP_LINES, typeFor, capsFor, typeStepPrice, hullStepPrice, hullSizeFor, HULL_STEP_HEALTH, switchToll, DRONE_PRICE, autoGunCapFor, turretMountPriceFor, effectiveAutoGuns, DEFENSE_DRONE_PRICE, ESCORT_KIND_DEFS, ESCORT_KINDS, escortCapFor, escortWingSize, escortKindOf, canOrderWorkforce, healCapPctFor, healRateFor, type EscortKind, ShipLine, TypeTier, ShipTypeDef } from '../shipProgression';
+import { SHIP_LINES, typeFor, regularCapacityFor, totalCapacityFor, capsFor, typeStepPrice, hullStepPrice, hullSizeFor, HULL_STEP_HEALTH, switchToll, DRONE_PRICE, autoGunCapFor, turretMountPriceFor, effectiveAutoGuns, DEFENSE_DRONE_PRICE, ESCORT_KIND_DEFS, ESCORT_KINDS, escortCapFor, escortWingSize, escortKindOf, canOrderWorkforce, healCapPctFor, healRateFor, type EscortKind, ShipLine, TypeTier, ShipTypeDef } from '../shipProgression';
 
 // One-line summary of what a type's frame DOES, read off its capability
 // fields — the workshop sells the special in the type's own numbers.
@@ -148,6 +149,7 @@ const stageFieldFor = (totalInfused: number): StageField => {
 
 interface HUDProps {
   starMass: number;
+  starSize: number;
   velocity: number;
   glitch: boolean;
   carrying: number;
@@ -165,6 +167,8 @@ interface HUDProps {
   myTeamId?: TeamId | null;
   enemyTeamId?: TeamId | null;
   enemyTotalInfused?: number;
+  enemyStarSize?: number;
+  enemyStarMass?: number;
   isShopOpen: boolean;
   useAnalogGauges: boolean;
   shipPos: { x: number; y: number };
@@ -232,6 +236,11 @@ interface HUDProps {
   onSetHarborOpen: (open: boolean) => void;
   onUndockGuest: (guestOwnerId: string) => void;
   onSelectWeaponSlot: (slotIndex: number) => void;
+  /** Latest refused select press, stamped by the loop (BG part
+   * 1/2, Adam 2026-10-25 — weapon silence): the key path's voice.
+   * Loop-local state, NOT game state, so it survives host
+   * snapshots to the local HUD. Null = no refusal outstanding. */
+  selectRefusal?: { at: number; slot: number; why: 'empty' | 'mount' } | null;
   ship: Ship;
   drones: Harvester[];
   escorts: EscortShip[];
@@ -248,6 +257,7 @@ interface HUDProps {
 
 export const HUD: React.FC<HUDProps> = ({ 
   starMass, 
+  starSize,
   velocity, 
   glitch, 
   carrying, 
@@ -261,6 +271,8 @@ export const HUD: React.FC<HUDProps> = ({
   myTeamId = null,
   enemyTeamId = null,
   enemyTotalInfused = 0,
+  enemyStarSize,
+  enemyStarMass,
   isShopOpen,
   useAnalogGauges,
   shipPos,
@@ -317,6 +329,7 @@ export const HUD: React.FC<HUDProps> = ({
   onSetHarborOpen,
   onUndockGuest,
   onSelectWeaponSlot,
+  selectRefusal = null,
   ship,
   drones,
   escorts,
@@ -405,9 +418,15 @@ export const HUD: React.FC<HUDProps> = ({
   // ship.size + ESCORT_DOCK_PAD, health below the kind's cap).
   const repairCapPct = healCapPctFor(shipLine, typeTier);
   const repairCeilingPct = Math.round(repairCapPct * 100);
+  // HULL POINTS (Adam, 2026-10-25): health is ABSOLUTE HP (base
+  // + 10/hull step), not a percentage — the old code printed it
+  // with a '%' and width'd bars by it, reading over 100% after
+  // any hull step. hullFrac is the true fraction of max, used
+  // for every bar width, low-hull pulse, and repair-cap test.
+  const hullFrac = shipHealth / Math.max(1, maxShipHealth);
   const repairRate = healRateFor(shipLine, typeTier);
   const repairingOn = ship.repairing !== false;
-  const activelyRepairing = repairingOn && shipHealth < repairCeilingPct && carrying > 0;
+  const activelyRepairing = repairingOn && hullFrac < repairCapPct && carrying > 0;
   const dockedWorkforce = drones.filter(d => d.ownerId === ship.ownerId && !d.starFleet && d.mode !== 'defense' && d.state === 'docked').length;
   const escortDockedFor = (kind: EscortKind): number => escorts.filter(e => e.ownerId === ship.ownerId && escortKindOf(e) === kind
     && e.health < e.maxHealth * healCapPctFor(e.line, e.typeTier)
@@ -473,13 +492,17 @@ export const HUD: React.FC<HUDProps> = ({
   const previewCopiedTimer = React.useRef<number | null>(null);
   const ordersPillShown = canOrder && bankInWell && !isShopOpen;
   const stripDetailShown = phoneStripOpen;
+  // TRACK-MAXED COUNT (Adam, 2026-10-25 — quibble): the
+  // maxed-track pointer names how many of the five base tracks
+  // are capped, not just that one is.
+  const maxedTrackCount = trackStatus(ship).filter(t => t.atCap).length;
   const dockSurfaceShown = !!ship.dockedTo || !!dockTarget;
   const caps = capsFor(shipLine, typeTier);
   const switchCost = switchToll({ lineSwitchesUsed, typeTier });
   // Gauge scales follow the ship as upgraded (audit, 2026-10-20): the
   // velocity gauges top out at the CURRENT top speed, and the cargo-mass
   // gauge at the CURRENT hold including overload — not stock constants.
-  const topSpeed = PHYSICS.MAX_VELOCITY + upgrades.thrust * 0.5;
+  const topSpeed = PHYSICS.MAX_VELOCITY + upgrades.thrust * PHYSICS.THRUST_SPD_STEP;
   // PING readout (kept on Adam's word, 2026-10-20 — the slot is for
   // multiplayer): today it measures the LOCAL loop honestly — an EMA of
   // the frame interval, i.e. how long your own machine takes to answer
@@ -521,8 +544,31 @@ export const HUD: React.FC<HUDProps> = ({
   const missionClock = `${Math.floor(missionSec / 60)}:${String(missionSec % 60).padStart(2, '0')}`;
   const rangeHome = Math.round(Math.hypot(shipPos.x - starPos.x, shipPos.y - starPos.y));
   const rangeEnemy = Math.round(Math.hypot(shipPos.x - enemyStarPos.x, shipPos.y - enemyStarPos.y));
-  const holdRegular = PHYSICS.CARGO.BASE_CAPACITY + upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS;
-  const holdTotal = holdRegular + Math.floor(holdRegular * PHYSICS.CARGO.OVERLOAD_RATIO);
+  // Shared hold law (9b6135f): capacity comes from
+  // regularCapacityFor/totalCapacityFor in shipProgression —
+  // never an inline copy, so display = law by construction.
+  const holdRegular = regularCapacityFor(ship);
+  // OVERLOADED SPEED (Adam, 2026-10-25 — display ruling): when
+  // the hold passes regular capacity (the loop's overload zone),
+  // the Thrust tile shows top speed / live speed, the live
+  // figure in HUD danger red. Live speed is the ship's actual
+  // velocity (already a HUD prop). The old speedMult figure died
+  // with the pinned 85/50 load curve (loadFactorFor), which
+  // scales thrust, not the cap — so no computed degraded-top
+  // exists to show. (If Adam wants the red figure from the first
+  // scrap rather than the overload zone, this condition alone
+  // changes.)
+  const isOverloaded = carrying > holdRegular;
+  const holdTotal = totalCapacityFor(ship);
+  // TURN DISPLAY MIRROR (Adam, 2026-10-25): raw turn rate /
+  // load-modified rate, modified in red when the load reduces
+  // it — the Thrust tile's pattern. Modified = raw ×
+  // loadFactorFor, the same function BG's turn-mirror uses
+  // (rotation × loadFactorFor, d2522f3), so display = law.
+  // Condition is load-reduces (factor < 1, i.e. any load),
+  // per Adam's wording — not the Thrust tile's overload zone.
+  const turnRaw = (PHYSICS.ROTATION_SPEED * progType.turnFactor + upgrades.handling * 0.005) * 60 * 180 / Math.PI;
+  const turnLoad = loadFactorFor(carrying, regularCapacityFor(ship), totalCapacityFor(ship));
   // Star growth readouts follow the RISING milestone costs (starGrowth.ts):
   // progress is scrap into the CURRENT milestone, judged against that
   // milestone's own cost — e.g. 40/125 while working on M2, not x/100.
@@ -629,6 +675,56 @@ export const HUD: React.FC<HUDProps> = ({
     if (shopNoticeTimer.current) window.clearTimeout(shopNoticeTimer.current);
     shopNoticeTimer.current = window.setTimeout(() => setShopNotice(null), 2800);
   };
+  // STRIP NOTICE (Adam, 2026-10-25 — weapon-strip bug): the
+  // workshop's notice line is invisible in flight, and the
+  // strip's grey chips used to fail SILENTLY — a press on an
+  // unowned/unmountable slot selects nothing and nothing said
+  // so, which reads as 'clicking does nothing'. Same idiom as
+  // flashShopNotice (transient, 2800ms), rendered as a fixed
+  // pill just below the strip on desktop / below the ribbon
+  // on phones, so a refused press always says why.
+  const [stripNotice, setStripNotice] = React.useState<string | null>(null);
+  const stripNoticeTimer = React.useRef<number | null>(null);
+  const flashStripNotice = (msg: string) => {
+    setStripNotice(msg);
+    if (stripNoticeTimer.current) window.clearTimeout(stripNoticeTimer.current);
+    stripNoticeTimer.current = window.setTimeout(() => setStripNotice(null), 2800);
+  };
+  // REFUSAL ECHOES (Adam, 2026-10-25 — weapon silence, BG part
+  // 1/2): the loop stamps refused key-path selects (selectRefusal)
+  // and dry-hold fires (the local ship's fireRefusedAt, read via
+  // the untyped-stamp idiom — the field is stamped, not typed).
+  // The HUD renders each stamp in the strip pill. Effects key on
+  // the stamp timestamps, so each refusal flashes exactly once,
+  // and the 2800ms freshness check keeps a stale stamp from
+  // flashing on a late mount. The click path needs no separate
+  // branch: a grey-chip click stamps selectRefusal through the
+  // same selectWeaponSlot, so one notice path covers clicks and
+  // keys alike (the earlier click branch is removed below).
+  React.useEffect(() => {
+    if (!selectRefusal) return;
+    if (Date.now() - selectRefusal.at > 2800) return;
+    const n = selectRefusal.slot < 5 ? selectRefusal.slot + 1 : 'T';
+    if (selectRefusal.why === 'empty') flashStripNotice(`SLOT ${n} EMPTY — NO WEAPON OWNED`);
+    else {
+      const wdef = getLoadoutItem(WEAPON_SELECT_ORDER[selectRefusal.slot]);
+      flashStripNotice(`CAN'T MOUNT ${(wdef?.name ?? 'THAT WEAPON').toUpperCase()} ON THIS HULL`);
+    }
+    // flashStripNotice is a HUD local, stable-enough per the
+    // workshop-notice precedent — deps stay on the stamp.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectRefusal?.at]);
+  const fireRefusedAt = (ship as unknown as { fireRefusedAt?: number }).fireRefusedAt;
+  React.useEffect(() => {
+    if (!fireRefusedAt) return;
+    if (Date.now() - fireRefusedAt > 2800) return;
+    const wdef = getLoadoutItem(loadout.weapon);
+    const wStats = wdef ? weaponStatsFor(wdef.id, arsenal[wdef.id] || 0) : null;
+    const cost = wStats?.scrapCost || 0;
+    const verb = wdef?.id === 'mine_layer' ? 'LAY' : wdef?.id === 'rail_lance' ? 'CHARGE' : 'FIRE';
+    flashStripNotice(cost > 0 ? `HOLD ${carrying}U — NEED ${cost}U TO ${verb}` : `HOLD EMPTY — CAN'T ${verb}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fireRefusedAt]);
   // SWITCH CONFIRMATION — THE FORCED SELL, AND THE ONE
   // REMAINING SHELVE (2026-10-22): a real hull change SELLS what
   // the new hull can't hold, at full price into the bank. The
@@ -929,11 +1025,11 @@ export const HUD: React.FC<HUDProps> = ({
             to the field. The hull bar keeps its amber cap tick;
             STAR LVL was a duplicate of row 1's M-level and goes. */}
         <div className="flex items-center gap-2 mt-0.5 text-[8px] font-mono whitespace-nowrap">
-          <span className={shipHealth < 30 ? 'text-red-500 animate-pulse font-bold' : 'text-zinc-400'}>HULL {Math.floor(shipHealth)}%</span>
+          <span className={hullFrac < 0.30 ? 'text-red-500 animate-pulse font-bold' : 'text-zinc-400'}>HULL {Math.floor(shipHealth)}/{maxShipHealth}</span>
           <div className="vu-meter w-14 h-1.5 bg-zinc-900 border border-zinc-800 relative shrink-0">
             <motion.div
-              className={`h-full ${shipHealth < 30 ? 'bg-red-600' : 'bg-cyan-500 shadow-[0_0_6px_cyan]'}`}
-              animate={{ width: `${shipHealth}%` }}
+              className={`h-full ${hullFrac < 0.30 ? 'bg-red-600' : 'bg-cyan-500 shadow-[0_0_6px_cyan]'}`}
+              animate={{ width: `${hullFrac * 100}%` }}
             />
             <div className="absolute top-0 bottom-0 w-[2px] bg-amber-400" style={{ left: `${repairCeilingPct}%` }} />
           </div>
@@ -944,7 +1040,7 @@ export const HUD: React.FC<HUDProps> = ({
               animate={{ width: `${(fuel / maxFuel) * 100}%` }}
             />
           </div>
-          <span className="text-pink-400 font-bold">CARGO {carrying}/{PHYSICS.CARGO.BASE_CAPACITY + upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS}</span>
+          <span className="text-pink-400 font-bold">CARGO {carrying}/{regularCapacityFor(ship)}</span>
         </div>
       </header>
 
@@ -972,8 +1068,12 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
       )}
 
-      {/* DESKTOP LEFT ASIDE (Hidden on phones) */}
-      <aside className="hidden md:flex w-48 min-w-[192px] flex-col gap-4">
+      {/* DESKTOP LEFT ASIDE (Hidden on phones) — NO-CLIPPING RULE
+          (Adam, 2026-10-25): min-h-0 lets this flex column shrink
+          below its content height, overflow-y-auto scrolls it when
+          taller than the viewport, so the foot (Comms/Logs hull
+          block) is never clipped unreachable. */}
+      <aside className="hidden md:flex w-48 min-w-[192px] flex-col gap-4 min-h-0 overflow-y-auto">
         {uiOptions.astroPanel && (
         <div className="hud-panel p-4 border-4">
           <div className="absolute top-0 right-0 p-1 text-[10px] text-[#2d2d30]">MOD-CR90</div>
@@ -1003,7 +1103,23 @@ export const HUD: React.FC<HUDProps> = ({
               )}
               <div className="flex justify-between text-[10px] mb-1">
                 <span className="text-zinc-200 tracking-wider">STAR LIFECYCLE</span>
-                <span className="font-bold" style={{ color: stageColor }}>{STAGE_LABELS[stageState.stage]}</span>
+                <span className="font-bold flex items-center gap-1.5" style={{ color: stageColor }}><span className="inline-block w-2.5 h-2.5 rounded-[2px] border border-zinc-600" style={{ backgroundColor: stageColor }} />{STAGE_LABELS[stageState.stage]}</span>
+              </div>
+              {/* STAR BODY (Adam, 2026-10-25 — panel asymmetry):
+                  the field bodies render FIXED palettes at every
+                  stage (home white-core/orange, enemy pale-rose/
+                  dark-rose), so the panel is where a star's color,
+                  size, and mass must READ — a swatch, not just a
+                  colored word, plus explicit SIZE and MASS rows.
+                  Same rows on both blocks, so the readouts can't
+                  drift apart (the stageFieldFor doctrine). */}
+              <div className="flex justify-between text-[10px] mb-1">
+                <span className="text-zinc-300">SIZE</span>
+                <span className="text-zinc-200 font-bold">{Math.round(starSize)}U</span>
+              </div>
+              <div className="flex justify-between text-[10px] mb-1">
+                <span className="text-zinc-300">MASS</span>
+                <span className="text-zinc-200 font-bold">{Math.round(starMass)}</span>
               </div>
               <div className="flex justify-between text-[10px] mb-1">
                 <span className="text-zinc-300">TOTAL FED</span>
@@ -1050,8 +1166,20 @@ export const HUD: React.FC<HUDProps> = ({
               )}
               <div className="flex justify-between text-[10px] mb-1">
                 <span className="text-zinc-200 tracking-wider">ENEMY LIFECYCLE</span>
-                <span className="font-bold" style={{ color: enemyField.color }}>{STAGE_LABELS[enemyField.state.stage]}</span>
+                <span className="font-bold flex items-center gap-1.5" style={{ color: enemyField.color }}><span className="inline-block w-2.5 h-2.5 rounded-[2px] border border-zinc-600" style={{ backgroundColor: enemyField.color }} />{STAGE_LABELS[enemyField.state.stage]}</span>
               </div>
+              {enemyStarSize !== undefined && (
+                <div className="flex justify-between text-[10px] mb-1">
+                  <span className="text-zinc-300">SIZE</span>
+                  <span className="text-zinc-200 font-bold">{Math.round(enemyStarSize)}U</span>
+                </div>
+              )}
+              {enemyStarMass !== undefined && (
+                <div className="flex justify-between text-[10px] mb-1">
+                  <span className="text-zinc-300">MASS</span>
+                  <span className="text-zinc-200 font-bold">{Math.round(enemyStarMass)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-[10px] mb-1">
                 <span className="text-zinc-300">TOTAL FED</span>
                 <span className="text-zinc-200 font-bold">{enemyTotalInfused}U</span>
@@ -1089,19 +1217,19 @@ export const HUD: React.FC<HUDProps> = ({
             <div className="text-[11px] leading-relaxed space-y-2 font-mono">
               <div className="mb-4">
                 <div className="flex justify-between text-[9px] mb-1">
-                  <span className={shipHealth < 30 ? 'text-red-500 animate-pulse' : 'text-zinc-200'}>HULL_INTEGRITY</span>
-                  <span>{Math.floor(shipHealth)}% · CAP {repairCeilingPct}%</span>
+                  <span className={hullFrac < 0.30 ? 'text-red-500 animate-pulse' : 'text-zinc-200'}>HULL_INTEGRITY</span>
+                  <span>{Math.floor(shipHealth)}/{maxShipHealth} · CAP {repairCeilingPct}%</span>
                 </div>
                 <div className="vu-meter h-3 bg-zinc-900 border border-zinc-800 relative">
                   <motion.div 
-                    className={`h-full ${shipHealth < 30 ? 'bg-red-600' : 'bg-cyan-600 shadow-[0_0_8px_cyan]'}`}
-                    animate={{ width: `${shipHealth}%` }}
+                    className={`h-full ${hullFrac < 0.30 ? 'bg-red-600' : 'bg-cyan-600 shadow-[0_0_8px_cyan]'}`}
+                    animate={{ width: `${hullFrac * 100}%` }}
                   />
                   <div className="absolute top-0 bottom-0 w-[2px] bg-amber-400" style={{ left: `${repairCeilingPct}%` }} />
                 </div>
               </div>
               {velocity > 4 && <p className="text-red-400">[WARN] SPEED EXCEEDS BUFFER</p>}
-              {carrying > (PHYSICS.CARGO.BASE_CAPACITY + upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS) && <p className="text-yellow-400">[WARN] CARGO OVERLOAD</p>}
+              {carrying > regularCapacityFor(ship) && <p className="text-yellow-400">[WARN] CARGO OVERLOAD</p>}
               {carrying > 0 && <p className="text-pink-400 font-bold">[INFO] SCRAP LOAD: {carrying}U</p>}
               <p className="text-cyan-400 font-bold bg-cyan-950/40 px-1 border-l-2 border-cyan-500">[FED] {teamScrap}U DELIVERED</p>
               {fuel < 20 && <p className="text-red-500 animate-pulse font-bold">[ERR] FUEL DEPLETED</p>}
@@ -1191,7 +1319,7 @@ export const HUD: React.FC<HUDProps> = ({
                   value={carrying} 
                   max={holdTotal} 
                   label="C-MASS" 
-                  color={carrying > (PHYSICS.CARGO.BASE_CAPACITY + upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS) ? "#f97316" : "#06b6d4"} 
+                  color={carrying > regularCapacityFor(ship) ? "#f97316" : "#06b6d4"} 
                 />
               </div>
             ) : (
@@ -1299,8 +1427,8 @@ export const HUD: React.FC<HUDProps> = ({
               <div className="embossed-label text-pink-300 text-[9px] whitespace-nowrap">Cargo Manifest</div>
               <div className="text-[10px] font-mono font-bold text-pink-400 ml-1">
                 {(() => {
-                  const reg = PHYSICS.CARGO.BASE_CAPACITY + upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS;
-                  const ovr = Math.floor(reg * PHYSICS.CARGO.OVERLOAD_RATIO);
+                  const reg = regularCapacityFor(ship);
+                  const ovr = totalCapacityFor(ship) - reg;
                   if (carrying > reg) {
                     return `${reg}/${reg} [+${carrying - reg}/${ovr}]`;
                   }
@@ -1310,8 +1438,8 @@ export const HUD: React.FC<HUDProps> = ({
             </div>
             <div className="flex-grow flex items-center justify-center min-h-[80px] bg-black/40 rounded border border-zinc-900/50 my-1 overflow-hidden p-1.5 shadow-inner">
               {(() => {
-                const regularCap = PHYSICS.CARGO.BASE_CAPACITY + upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS;
-                const overloadCap = Math.floor(regularCap * PHYSICS.CARGO.OVERLOAD_RATIO);
+                const regularCap = regularCapacityFor(ship);
+                const overloadCap = totalCapacityFor(ship) - regularCap;
                 const totalSlots = regularCap + overloadCap;
                 
                 const containerW = 170;
@@ -1365,7 +1493,7 @@ export const HUD: React.FC<HUDProps> = ({
                 );
               })()}
             </div>
-            {carrying > (PHYSICS.CARGO.BASE_CAPACITY + upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS) && (
+            {carrying > regularCapacityFor(ship) && (
               <div className="text-[8px] text-amber-500 animate-pulse font-bold uppercase tracking-tighter leading-none mt-1 text-center">
                 WARNING: HULL INTEGRITY COMPROMISED BY CARGO LOAD
               </div>
@@ -1646,6 +1774,12 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
       )}
 
+      {stripNotice && (
+        <div className="fixed top-[76px] md:top-[108px] left-1/2 -translate-x-1/2 z-[60] pointer-events-none">
+          <div className="hud-panel rounded border border-amber-700 bg-amber-950/40 px-3 py-1.5 font-mono text-[10px] sm:text-[11px] font-bold tracking-widest text-amber-300 text-center max-w-[92vw]">{stripNotice}</div>
+        </div>
+      )}
+
       <div className="fixed top-[104px] right-2 md:top-6 md:right-6 z-[54] pointer-events-none">
         <div className="hud-panel border border-zinc-800 px-2 py-1 font-mono text-[9px] sm:text-[10px] leading-none flex items-center gap-1.5 shadow-lg">
           <span><span className="text-zinc-500">PING</span> <span className="text-zinc-100 font-bold">{pingMs}MS</span></span>
@@ -1680,11 +1814,11 @@ export const HUD: React.FC<HUDProps> = ({
           </div>
         </div>
         {[
-          { icon: '🚀', name: 'THRUST', base: PHYSICS.UPGRADE_COSTS.THRUST, lvl: upgrades.thrust, cap: caps.thrust, stat: `SPD ${(PHYSICS.MAX_VELOCITY + upgrades.thrust * 0.5).toFixed(1)}` },
-          { icon: '🕹️', name: 'TURN', base: PHYSICS.UPGRADE_COSTS.HANDLING, lvl: upgrades.handling, cap: caps.handling, stat: `${Math.round((PHYSICS.ROTATION_SPEED * progType.turnFactor + upgrades.handling * 0.005) * 60 * 180 / Math.PI)}°/S` },
+          { icon: '🚀', name: 'THRUST', base: PHYSICS.UPGRADE_COSTS.THRUST, lvl: upgrades.thrust, cap: caps.thrust, stat: isOverloaded ? <>SPD {topSpeed.toFixed(1)} / <span className="text-red-500">{velocity.toFixed(1)}</span></> : `SPD ${topSpeed.toFixed(1)}` },
+          { icon: '🕹️', name: 'TURN', base: PHYSICS.UPGRADE_COSTS.HANDLING, lvl: upgrades.handling, cap: caps.handling, stat: turnLoad < 1 ? <>{Math.round(turnRaw)}°/S / <span className="text-red-500">{Math.round(turnRaw * turnLoad)}°/S</span></> : `${Math.round(turnRaw)}°/S` },
           { icon: '🧲', name: 'VAC', base: PHYSICS.UPGRADE_COSTS.ATTRACTOR, lvl: upgrades.attractor, cap: caps.vac, stat: `${PHYSICS.BASE_ATTRACT_RADIUS + upgrades.attractor * 35}U` },
           { icon: '⚡', name: 'FUEL', base: PHYSICS.UPGRADE_COSTS.FUEL, lvl: upgrades.fuelCap, cap: caps.fuel, stat: `${maxFuel}` },
-          { icon: '📦', name: 'HOLD', base: PHYSICS.UPGRADE_COSTS.CARGO, lvl: upgrades.cargo, cap: caps.cargo, stat: `${PHYSICS.CARGO.BASE_CAPACITY + upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS}U` },
+          { icon: '📦', name: 'HOLD', base: PHYSICS.UPGRADE_COSTS.CARGO, lvl: upgrades.cargo, cap: caps.cargo, stat: `${regularCapacityFor(ship)}U` },
         ].map(t => (
           <div key={t.name} className={`hud-panel px-1.5 py-0.5 rounded border border-zinc-800 text-center min-w-[56px] ${stripDetailShown ? '' : 'max-md:hidden'}${t.name === 'VAC' ? spot('vac') : ''}`}>
             <div className="text-[8px] sm:text-[9px] font-mono text-zinc-300 tracking-widest whitespace-nowrap">{t.icon}<span className="max-sm:hidden"> {t.name} · L{t.lvl}/{t.cap}</span>{t.lvl >= t.cap ? <span className="text-zinc-500"> MAX</span> : <span className="text-amber-300"> ⬆{trackNextCost(t.base, t.lvl)}U</span>}</div>
@@ -1692,11 +1826,12 @@ export const HUD: React.FC<HUDProps> = ({
           </div>
         ))}
         <div className={`w-px bg-zinc-800 mx-0.5 ${stripDetailShown ? '' : 'max-md:hidden'}`} />
-        {/* MAXED-TRACK POINTER (Option C): a capped track names
-            where its headroom lives — its own wrapped row right
-            after the tracks; phone shows it with the detail. */}
-        {typeTier < 5 && trackStatus(ship).some(t => t.atCap) && (
-          <div className={`basis-full text-center text-[8px] sm:text-[9px] font-mono font-bold tracking-widest text-amber-400 ${stripDetailShown ? '' : 'max-md:hidden'}`}>⬆ TRACK MAXED — HEADROOM IS UP A FRAME</div>
+        {/* MAXED-TRACK POINTER (Option C): capped tracks name
+            where their headroom lives — their own wrapped row
+            right after the tracks, counting how many of the
+            five are capped; phone shows it with the detail. */}
+        {typeTier < 5 && maxedTrackCount > 0 && (
+          <div className={`basis-full text-center text-[8px] sm:text-[9px] font-mono font-bold tracking-widest text-amber-400 ${stripDetailShown ? '' : 'max-md:hidden'}`}>⬆ {maxedTrackCount} OF 5 MAXED — HEADROOM IS UP A FRAME</div>
         )}
         {([
           { slot: 'weapon' as const, label: 'WPN' },
@@ -1707,6 +1842,15 @@ export const HUD: React.FC<HUDProps> = ({
           const tier = def ? (arsenal[def.id] || 0) : 0;
           const isShield = slot === 'defense' && def?.id === 'deflector_shield';
           const isDecoy = slot === 'defense' && def?.id === 'decoy_beacon';
+          // HOLD-SHORT FLAG (Adam, 2026-10-25 — weapon-strip bug):
+          // a scrap-cost weapon with a hold that can't afford one
+          // shot fires NOTHING (mine: dropCount 0; guns: the volley
+          // breaks before mount 0) and nothing says so — which
+          // reads as 'the weapon can't be utilized'. The plate
+          // names the shortfall while it holds, so F's silence
+          // is explained before the press, not after.
+          const wStats = slot === 'weapon' && def ? weaponStatsFor(def.id, arsenal[def.id] || 0) : null;
+          const holdShort = !!wStats && (wStats.scrapCost || 0) > 0 && carrying < (wStats.scrapCost || 0);
           return (
             <div key={slot} className={`hud-panel px-1.5 py-0.5 rounded border text-center min-w-[56px] ${def ? 'border-[#33ff33]/50' : 'border-zinc-800'} ${stripDetailShown ? '' : 'max-md:hidden'}`}>
               <div className="text-[8px] sm:text-[9px] font-mono text-zinc-300 tracking-widest whitespace-nowrap">
@@ -1715,6 +1859,9 @@ export const HUD: React.FC<HUDProps> = ({
               <div className={`text-[8px] sm:text-[10px] font-mono font-bold uppercase leading-tight whitespace-nowrap max-w-[92px] truncate ${def ? 'text-[#33ff33]' : 'text-zinc-400'}`}>
                 {def ? `${def.icon} ${def.name}` : '— EMPTY —'}
               </div>
+              {holdShort && wStats && def && (
+                <div className="text-[7px] sm:text-[8px] font-mono text-amber-300 whitespace-nowrap">HOLD {carrying}U — NEED {wStats.scrapCost}U TO {def.id === 'mine_layer' ? 'LAY' : def.id === 'rail_lance' ? 'CHARGE' : 'FIRE'}</div>
+              )}
               {isDecoy && (
                 <div className="text-[7px] sm:text-[8px] font-mono text-pink-300 whitespace-nowrap">{decoyActive ? 'BEACON LIVE' : 'PRESS E / PILL'}</div>
               )}
@@ -1738,7 +1885,7 @@ export const HUD: React.FC<HUDProps> = ({
           const verb = wid === 'mine_layer' ? 'LAY' : wid === 'rail_lance' ? 'CHARGE' : 'FIRE';
           return (
             <button key={wid} onClick={() => onSelectWeaponSlot(i)}
-              className={`hud-panel px-1.5 py-0.5 rounded border text-center min-w-[34px] sm:min-w-[44px] pointer-events-auto touch-manipulation active:scale-95 ${selected ? 'border-[#33ff33] shadow-[0_0_8px_rgba(51,255,51,0.35)]' : selectable ? 'border-zinc-700' : 'border-zinc-800 opacity-45'}`}>
+              className={`hud-panel px-1.5 py-0.5 rounded border text-center min-w-[34px] sm:min-w-[44px] pointer-events-auto touch-manipulation active:scale-95 ${selected ? 'border-[#33ff33] bg-[#33ff33]/20 shadow-[0_0_12px_rgba(51,255,51,0.6)]' : selectable ? 'border-zinc-700' : 'border-zinc-800 opacity-45'}`}>
               <div className="text-[8px] sm:text-[9px] font-mono text-zinc-300 tracking-widest whitespace-nowrap">{i < 5 ? i + 1 : 'T'} · {wdef?.icon ?? '?'}</div>
               <div className={`text-[7px] sm:text-[8px] font-mono font-bold uppercase leading-tight whitespace-nowrap ${selected ? 'text-[#33ff33]' : selectable ? 'text-zinc-300' : 'text-zinc-500'}`}>
                 {selected ? `F · ${verb}` : owned ? (selectable ? <><span className="max-sm:hidden">READY</span><span className="sm:hidden">T{arsenal[wid]}</span></> : <><span className="max-sm:hidden">NO MOUNT</span><span className="sm:hidden">T{arsenal[wid]} ✕</span></>) : '—'}
@@ -1891,11 +2038,19 @@ export const HUD: React.FC<HUDProps> = ({
                     const gateReason = def.category === 'weapon' ? weaponGateReason(shipLine, typeTier, def.id) : null;
                     const mountable = gateReason === null;
                     const canBuy = !maxed && mountable && funds >= nextCost;
-                    // Swap pricing (Adam's pin): free into an empty slot,
-                    // otherwise 60 + 20 per tier beyond the first of the
-                    // item being swapped in.
+                    // Swap pricing — CORRECTED (Adam, 2026-10-25):
+                    // owned weapons equip FREE at any time, no fee
+                    // on selection change, period. The old 60 + 20
+                    // per tier swap fee survives ONLY for defense /
+                    // hybrid slots (out of this correction's scope);
+                    // the hull line-switch toll stands untouched.
+                    // With swapCost 0, canEquip drops its funds gate
+                    // for weapons, the button reads EQUIP (FREE),
+                    // and the SWAPPING IN ... COSTS notice can't fire
+                    // for weapons — all by construction, not by
+                    // special-casing each site.
                     const slotFilled = loadout[def.category] !== null;
-                    const swapCost = slotFilled ? swapCostForTier(Math.max(1, owned)) : 0;
+                    const swapCost = def.category === 'weapon' ? 0 : (slotFilled ? swapCostForTier(Math.max(1, owned)) : 0);
                     const canEquip = owned > 0 && !equipped && mountable && funds >= swapCost;
                     return (
                       <div key={def.id} className={`pitted-metal p-3 sm:p-4 flex flex-col gap-1.5 sm:gap-2 relative rounded-lg text-left border ${equipped && !mountable ? 'border-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.25)]' : equipped ? 'border-[#33ff33] shadow-[0_0_10px_rgba(51,255,51,0.25)]' : gateReason ? 'border-zinc-800' : 'border-zinc-700'}`}>
@@ -2062,7 +2217,7 @@ export const HUD: React.FC<HUDProps> = ({
                       ? `PATCHING FROM THE HOLD NOW — ${repairRate} HP/S UNTIL THE CAP OR AN EMPTY HOLD.`
                       : !repairingOn
                         ? 'REPAIRS OFF — YOUR HULL WILL NOT PATCH. NOTE: A DOCKED HARVESTER STILL DRAWS THE HOLD TO PATCH ITSELF; THE TOGGLE GOVERNS YOUR HULL, NOT THE DOCK.'
-                        : shipHealth >= repairCeilingPct
+                        : hullFrac >= repairCapPct
                           ? 'NOTHING TO PATCH — THE HULL STANDS AT ITS REPAIR CAP. DAMAGE BELOW THE CAP NEVER HEALS.'
                           : 'HOLD EMPTY — NOTHING TO PATCH WITH. CARRY SCRAP AND THE CREWS GO TO WORK.'}
                   </p>

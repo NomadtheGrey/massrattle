@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { GameState, SeatSimState, Star, Vector2D, Ship, Scrap } from '../types';
 import { PHYSICS, COLORS } from '../constants';
-import { getLoadoutItem, itemTierCost, swapCostForTier, MAX_ITEM_TIER, canMountWeapon, mountableLoadout , weaponIdForSelectSlot } from '../loadout';
+import { getLoadoutItem, itemTierCost, swapCostForTier, MAX_ITEM_TIER, canMountWeapon, mountableLoadout , weaponIdForSelectSlot, selectRefusalWhy } from '../loadout';
 import { inBankWell } from '../bank';
 import { infuseStar, milestonesForInfused } from '../starGrowth';
 import { ownerIdForSeat, starIdForSeat } from '../sim/ownership';
@@ -15,7 +15,7 @@ import {
   type SimEvent,
 } from '../sim/simEvents';
 import { DEBUG_ARMED } from '../debug';
-import { stepStarBurn, stepShipPhysics, ShipPhysicsInputs } from '../sim/physics';
+import { stepStarBurn, stepShipPhysics, loadFactorFor, starHealAmount, ShipPhysicsInputs } from '../sim/physics';
 import { createMatch, shipSpawnPosition } from '../sim/matchAssembly';
 import { loadSoloGame, saveSoloGame, clearSoloGame } from '../soloSave';
 import { TUTORIAL_FLAG_KEY, TUTORIAL_STEP_DEFS, TUTORIAL_STIPEND, TEETH_INDEX, captureBaseline, type TutorialBaseline } from '../tutorial';
@@ -41,6 +41,7 @@ import { stepCme } from '../sim/cme';
 import { computeStandings } from '../sim/standings';
 import { areHostile, areTeammates } from '../sim/teams';
 import { applyDeathLoss, botRepurchaseDue, completeRespawn, respawnDue, tryRepurchase } from '../sim/deathEconomy';
+import { snapshotDeadShip, spawnBuybackDrones } from '../sim/autoBuyback';
 import { walletPay, inTeamWell, attractRadiusForShip } from '../sim/seatShop';
 import { stepBotEconomy } from '../sim/botEconomy';
 import { isValidTarget, nextTargetId, stepTargetLocks } from '../sim/targeting';
@@ -57,7 +58,7 @@ import { appendEventRecords, EventFeedEntry } from '../sim/eventFeed';
 import { turretsForMilestones, turretRingRadius, turretDamageFor, turretFireChanceFor, turretAngleAt, targetInTurretArc, applyDeliveryHeal } from '../starDefense';
 import { reconcileTurrets, stepTurretRegen, damageTurret, turretPos, TURRET_POD_DAMAGE, TURRET_HIT_RADIUS } from '../sim/turretState';
 import { weaponStatsFor, shieldMaxFor, shieldRechargePerFrame, armorHullFor, armorThrustFactor, PD_RANGE, PD_COOLDOWN_MS, pdDamageFor, decoyHealthFor, decoyLifeFramesFor, gravFactorFor, thornDamageFor, aegisAbsorbFor } from '../loadout';
-import { ShipLine, TypeTier, DRONE_MAX_HEALTH, typeFor, capsFor, typeStepPrice, hullStepPrice, hullSizeFor, HULL_STEP_HEALTH, switchToll, DRONE_PRICE, DEFENSE_DRONE_PRICE, EXTRA_MOUNT_DAMAGE, AUTO_GUN, autoGunCapFor, effectiveAutoGuns, turretMountPriceFor, ESCORT_KIND_DEFS, escortCapFor, escortKindOf, canOrderWorkforce, healCapPctFor, healRateFor, type EscortKind } from '../shipProgression';
+import { ShipLine, TypeTier, DRONE_MAX_HEALTH, typeFor, capsFor, regularCapacityFor, totalCapacityFor, typeStepPrice, hullStepPrice, hullSizeFor, HULL_STEP_HEALTH, switchToll, DRONE_PRICE, DEFENSE_DRONE_PRICE, EXTRA_MOUNT_DAMAGE, AUTO_GUN, autoGunCapFor, effectiveAutoGuns, turretMountPriceFor, ESCORT_KIND_DEFS, escortCapFor, escortKindOf, canOrderWorkforce, healCapPctFor, healRateFor, type EscortKind } from '../shipProgression';
 
 /* attractRadiusForShip moved to src/sim/seatShop.ts (B2) — one text of the law for the local verbs, the bot policy, and guest intent consumption. */
 
@@ -193,6 +194,15 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
   // step state for the HUD's coach card, refs for the frame gates
   // (captain parking, save suppression), baselines per step entry.
   const [tutorial, setTutorial] = useState<{ active: boolean; step: number; done: boolean }>(() => ({ active: tutorialBootRef.current === true, step: 0, done: false }));
+  // WEAPON SILENCE (Adam, 2026-10-25): the latest refused select
+  // press (key path 1-5/T on a grey slot). Loop-local React
+  // state, NOT game state — a guest's game-state stamp would be
+  // overwritten by the next host snapshot within a frame, while
+  // this survives to the local HUD. Returned to App; the HUD
+  // renders it in the strip pill on a 2800ms window. Null =
+  // no refusal outstanding (callers never clear it; the window
+  // expires it).
+  const [selectRefusal, setSelectRefusal] = useState<{ at: number; slot: number; why: 'empty' | 'mount' } | null>(null);
   const tutorialActiveRef = useRef(tutorial.active);
   const tutorialStepRef = useRef(0);
   const tutorialDoneRef = useRef(false);
@@ -496,10 +506,15 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
 
       const ship = { ...prev.ship };
       let banked = prev.bankedScrap;
-      // Adam's pin: swapping costs 60 + 20 per tier beyond the first,
-      // priced on the INCOMING item's tier. Empty slot = free equip.
-      // Paid from the combined wallet like every other purchase.
-      if (current !== null) {
+      // SWAP FREE (Adam correction, 2026-10-25 — supersedes the
+      // pinned 60 + 20/tier fee for WEAPONS): switching owned guns
+      // costs nothing, anytime, anywhere — no wallet, no well
+      // gate (the fee's bank leg was the loop's only location
+      // involvement). Defense/hybrid swaps keep the old fee
+      // (60 + 20 per tier beyond the first, on the incoming
+      // item's tier, from the combined wallet). Empty slot =
+      // free equip, as before.
+      if (current !== null && slot !== 'weapon') {
         const payment = walletPay(prev.ship.carrying, prev.bankedScrap, swapCostForTier(owned), inTeamWell(prev.seats, prev.ship));
         if (!payment) return prev;
         ship.carrying = payment.carrying;
@@ -573,8 +588,8 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
     setState(prev => {
       if (!inTeamWell(prev.seats, prev.ship)) return prev; // banking happens at home
       if (prev.bankedScrap <= 0) return prev;
-      const regularCapacity = PHYSICS.CARGO.BASE_CAPACITY + prev.ship.upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS + typeFor(prev.ship.line, prev.ship.typeTier).cargoBonus;
-      const totalCapacity = regularCapacity + Math.floor(regularCapacity * PHYSICS.CARGO.OVERLOAD_RATIO);
+      const regularCapacity = regularCapacityFor(prev.ship);
+      const totalCapacity = totalCapacityFor(prev.ship);
       const space = Math.max(0, totalCapacity - prev.ship.carrying);
       const moved = Math.min(space, prev.bankedScrap);
       if (moved <= 0) return prev;
@@ -596,10 +611,17 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
   // the owned/installed gates, then runs the ordinary equip
   // verb, swap fee on change included; on a guest the equip
   // verb's own intent path carries it to the host. A press on
-  // a greyed cell (unowned, unmountable) selects nothing.
+  // a greyed cell (unowned, unmountable) selects nothing — and
+  // now SAYS SO: the null case stamps selectRefusal for the HUD
+  // instead of dying silently (the click path renders its own
+  // notice; this is the key path's voice).
   const selectWeaponSlot = useCallback((slotIndex: number) => {
     const itemId = weaponIdForSelectSlot(stateRef.current.ship, slotIndex);
     if (itemId) equipItem(itemId);
+    else {
+      const why = selectRefusalWhy(stateRef.current.ship, slotIndex);
+      if (why) setSelectRefusal({ at: Date.now(), slot: slotIndex, why });
+    }
   }, [equipItem]);
 
   // TARGET LOCKS (CONTROLS.md follow-on): Tab cycles the lock,
@@ -1043,7 +1065,7 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
       const idx = prev.seats.findIndex(s => s.ownerId === ownerId);
       if (idx < 0) return prev;
       const seat: SeatSimState = { ...prev.seats[idx] };
-      const bought = tryRepurchase(seat, performance.now());
+      const bought = tryRepurchase(seat, performance.now(), { autoBuy: true, drones: prev.drones });
       if (!bought) return prev;
       const seats = prev.seats.map((s, i) => (i === idx ? seat : s));
       const eventFeed = appendEventRecords(prev.eventFeed, [
@@ -1629,14 +1651,21 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
         const hosting =
           !!frameSession && !!frameRoom && frameSession.isHost &&
           mpRoomRef.current === frameRoom.code;
-        // The local seat began this frame shipless in a hosted
-        // match: its ship died in an earlier frame and the death
+        // The local seat began this frame shipless: its ship died in an earlier frame and the death
         // economy holds the seat until repurchase. The top-level
         // ship is then only the wreck stand-in (see the death
         // sweep); the seat record carries the truth, and the
-        // rebuild below keeps it null.
+        // rebuild below keeps it null. SOLO TWIN OF #35 (Adam live
+        // bug, 2026-10-25): this used to be hosting-gated, so in
+        // solo the rebuild re-armed the seat with the dead
+        // stand-in every frame and the cascade re-taxed 25% +
+        // deaths+1 per frame until arrival — the bank wiped
+        // within ~1s of death. A nulled seat stays nulled in
+        // every mode; the arrival tick re-arms it directly
+        // (completeRespawn sets seat.ship), so this cannot
+        // strand a legitimate redeploy.
         const localSeatDead =
-          hosting && localIdx >= 0 && prevSeats[localIdx].ship === null;
+          localIdx >= 0 && prevSeats[localIdx].ship === null;
         const simSeats: SeatSimState[] = prevSeats.map((ps, i) => {
           const seat: SeatSimState = { ...ps };
           if (i === localIdx) {
@@ -1835,18 +1864,27 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
           const stick = input.stick;
           const stickDist = stick ? Math.sqrt(stick.x * stick.x + stick.y * stick.y) : 0;
 
-          // Cargo Capacity (the line/type cargoBonus rides on top of the
-          // cargo track; the overload ratio applies to the total, as ever)
-          const regularCapacity = PHYSICS.CARGO.BASE_CAPACITY + s.upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS + typeFor(s.line, s.typeTier).cargoBonus;
-          const overloadCapacity = Math.floor(regularCapacity * PHYSICS.CARGO.OVERLOAD_RATIO);
-          const totalCapacity = regularCapacity + overloadCapacity;
+          // Cargo Capacity comes from the shared helper (shipProgression) — one text of
+          // the law, so display = law; the overload ratio applies to the total, as ever.
+          const regularCapacity = regularCapacityFor(s);
+          const totalCapacity = totalCapacityFor(s);
 
-          // Slowdown Penalty (Overload)
-          let speedMult = 1.0;
-          if (s.carrying > regularCapacity) {
-            const excess = s.carrying - regularCapacity;
-            speedMult = 1.0 - (excess / overloadCapacity) * PHYSICS.CARGO.SLOWDOWN_PENALTY;
-          }
+          // Pinned load curve (Adam, 2026-10-25): effective thrust speed 1.0 → 0.85 over
+          // empty → regular, then 0.85 → 0.50 over regular → total. Single punishment:
+          // this factor replaces the old speedMult AND the cargo-mass divisor (flat mass
+          // in physics.ts) — never both stacked. (regularCapacity is per-line — it
+          // includes the line cargoBonus, which stays per Adam's 2026-10-25 retraction —
+          // so the curve anchors are per-line, not uniform.)
+          const loadFactor = loadFactorFor(s.carrying, regularCapacity, totalCapacity);
+
+          // SHIP STAR-HEALING (Adam, 2026-10-25): a ship in a friendly well regains a
+          // tiny bit of hull from the star (DRAFT 0.5 HP/s via starHealAmount, capped
+          // at maxHealth) — a separate source from hold-scrap repair, so the two stack;
+          // independent of the repair toggle (it spends no hold scrap). Bots inherit
+          // (the host loop runs every seat's ship); docked ships heal too (they are
+          // at the star by definition). Range = the well (inTeamWell) — the game's
+          // existing "at a friendly star" zone, no new range number.
+          s.health = Math.min(s.maxHealth, s.health + starHealAmount(s.health, s.maxHealth, inTeamWell(prev.seats, s)));
 
           if (input.wantsThrust && s.fuel > PHYSICS.FUEL_CONSUMPTION) {
             s.thrust = true;
@@ -1883,7 +1921,7 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
             ship: s, simSeats, star: args.ownStar, enemyStar: args.hostileStar,
             keys: args.physKeys,
             touchInputs: args.physTouch,
-            stick, stickDist, speedMult, thrustFactor: sThrustFactor, gravFactor: sGravFactor, hyId: sHyId, hyTier: sHyTier,
+            stick, stickDist, loadFactor, thrustFactor: sThrustFactor, gravFactor: sGravFactor, hyId: sHyId, hyTier: sHyTier,
           });
 
           // Scrap Collection, ATTRACTION and CULLING
@@ -2009,6 +2047,13 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
                     ownerId: s.ownerId,
                   });
                 }
+              } else if (cost > 0 && Date.now() - (s.fireRefusedAt ?? 0) > 2800) {
+                // WEAPON SILENCE (Adam, 2026-10-25): a mine press
+                // with a dry hold used to do NOTHING — no mine, no
+                // cooldown, no sound, no word. Stamp the refusal
+                // (rate-limited to one per 2800ms window while F is
+                // held); the HUD reads the local seat's stamp.
+                s.fireRefusedAt = Date.now();
               }
             } else {
               // HARD POINTS (Phase 3): the equipped weapon fires from
@@ -2063,6 +2108,13 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
                 // PERISCOPE (ruled, src/sim/stealth.ts): firing
                 // while cloaked surfaces the submarine.
                 if (isStealthShip(s)) s.cloakReveal = PERISCOPE_REVEAL_S;
+              } else if (cost > 0 && Date.now() - (s.fireRefusedAt ?? 0) > 2800) {
+                // WEAPON SILENCE (Adam, 2026-10-25): a volley
+                // that never fired — the hold could not afford
+                // even mount 0 — used to die silently (no shot,
+                // no cooldown, no sound, no word). Same stamp,
+                // same window, as the mine refusal above.
+                s.fireRefusedAt = Date.now();
               }
             }
           }
@@ -2188,7 +2240,7 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
                 guestSeqSeenRef.current.set(seat.ownerId, payload.seq);
                 countDroppedActions(payload);
                 if (!prev.matchEnd) {
-                  const consumed = consumeRepurchaseIntent(seat, payload, time);
+                  const consumed = consumeRepurchaseIntent(seat, payload, time, next.drones);
                   if (consumed) feedEntries.push(consumed.record);
                   // B2 PER-SEAT ECONOMY: the guest's shop intents
                   // apply to THEIR seat through the seat shop —
@@ -2615,6 +2667,12 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
           seat.bankedScrap = cascade.bankAfter;
           seat.deaths = cascade.deathsAfter;
           seat.shipLostAt = time;
+          // AUTO-BUYBACK (dev pin, 2026-10-25): snapshot the dead
+          // frame's build before the ship nulls — the repurchase
+          // reads it to rebuild the same frame as far as the
+          // post-tax bank reaches. Hold cargo is not snapshotted
+          // (salvage); escorts are not snapshotted (workshop).
+          seat.deathSnapshot = snapshotDeadShip(bs, next.drones);
           seat.ship = null;
           if (isLocalSeat) {
             // The local seat's bank IS the top-level wallet (the
@@ -2666,7 +2724,25 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
           // recorded at purchase; arrival itself is silent.
           for (const seat of simSeats) {
             if (respawnDue(seat, time)) {
-              const arrived = completeRespawn(seat);
+              let arrived = completeRespawn(seat);
+              // AUTO-BUYBACK (dev pin, 2026-10-25): a paid frame
+              // bought with a kit lands WITH its kit — the pending
+              // frame built at press replaces the bare starter,
+              // re-positioned at the arrival spawn, and its bought
+              // workforce spawns beside it. `arrived` is re-pointed
+              // so the #35 promotion below lands the built frame,
+              // not the starter.
+              if (arrived && seat.pendingBuyback) {
+                const kit = seat.pendingBuyback;
+                seat.ship = { ...kit.ship, pos: { ...arrived.pos } };
+                const spawned = spawnBuybackDrones(
+                  seat.ship, seat.star, kit.harvesters, kit.defenseDrones,
+                  seat.ownerId === localOwnerId ? 'player' : 'enemy',
+                );
+                if (spawned.length) next.drones = [...next.drones, ...spawned];
+                seat.pendingBuyback = undefined;
+                arrived = seat.ship;
+              }
               // PAID ARRIVAL LANDS ON THE TOP LEVEL (MP bank wipe,
               // Adam, 2026-10-25): the frame return carries the
               // working-copy `ship`, and the next frame's rebuild
@@ -2975,6 +3051,7 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
     buyItem,
     equipItem,
     selectWeaponSlot,
+    selectRefusal,
     cycleTarget,
     setTarget,
     buyType,

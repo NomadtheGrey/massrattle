@@ -26,7 +26,7 @@
 import { PHYSICS } from '../constants';
 import type { EscortShip, Harvester, SeatSimState, Ship, Star } from '../types';
 import {
-  typeFor, capsFor, typeStepPrice, hullStepPrice, hullSizeFor, HULL_STEP_HEALTH,
+  typeFor, capsFor, regularCapacityFor, totalCapacityFor, typeStepPrice, hullStepPrice, hullSizeFor, HULL_STEP_HEALTH,
   switchToll, autoGunCapFor, turretMountPriceFor, DRONE_PRICE, DEFENSE_DRONE_PRICE,
   DRONE_MAX_HEALTH, ESCORT_KIND_DEFS, escortCapFor, escortKindOf, canOrderWorkforce,
   type ShipLine, type TypeTier, type EscortKind,
@@ -173,14 +173,21 @@ export const seatBuyItem = (seat: SeatSimState, ctx: SeatShopCtx, itemId: string
 export const seatEquipItem = (seat: SeatSimState, ctx: SeatShopCtx, itemId: string): SeatShopChange | null => {
   const def = getLoadoutItem(itemId);
   const ship = seat.ship;
-  if (!def || !ship || !inTeamWell(ctx.seats, ship)) return null;
+  if (!def || !ship) return null;
+  // SWAP FREE (Adam correction, 2026-10-25): weapon equips are
+  // not shop transactions — no well gate, no fee (the loop's
+  // chip/key path never had a well gate; this keeps the guest
+  // intent path honest with the guide's "anytime, anywhere").
+  // Defense/hybrid equips stay shop transactions: well-gated,
+  // fee-charged, as before.
+  if (def.category !== 'weapon' && !inTeamWell(ctx.seats, ship)) return null;
   const owned = ship.arsenal[itemId] || 0;
   if (owned <= 0) return null;
   if (!canMountWeapon(ship.line, ship.typeTier, itemId)) return null;
   const slot = def.category;
   const current = ship.loadout[slot];
   if (current === itemId) return null;
-  if (current !== null && !pay(seat, swapCostForTier(owned), true)) return null;
+  if (current !== null && def.category !== 'weapon' && !pay(seat, swapCostForTier(owned), true)) return null;
   seat.ship = { ...seat.ship!, loadout: { ...seat.ship!.loadout, [slot]: itemId } };
   return {};
 };
@@ -214,8 +221,8 @@ export const seatDepositBank = (seat: SeatSimState, ctx: SeatShopCtx): SeatShopC
 export const seatWithdrawBank = (seat: SeatSimState, ctx: SeatShopCtx): SeatShopChange | null => {
   const ship = seat.ship;
   if (!ship || !inTeamWell(ctx.seats, ship) || seat.bankedScrap <= 0) return null;
-  const regular = PHYSICS.CARGO.BASE_CAPACITY + ship.upgrades.cargo * PHYSICS.CARGO.UPGRADE_BONUS + typeFor(ship.line, ship.typeTier).cargoBonus;
-  const total = regular + Math.floor(regular * PHYSICS.CARGO.OVERLOAD_RATIO);
+  const regular = regularCapacityFor(ship);
+  const total = totalCapacityFor(ship);
   const moved = Math.min(Math.max(0, total - ship.carrying), seat.bankedScrap);
   if (moved <= 0) return null;
   seat.bankedScrap -= moved;

@@ -229,6 +229,22 @@ export const weaponIdForSelectSlot = (
   return itemId;
 };
 
+/** WEAPON SILENCE (Adam, 2026-10-25): why a select press on a
+ * slot resolves to nothing — the loop stamps this for the HUD
+ * to render (key path; the click path renders its own notice).
+ * Returns null when the slot selects (so callers test
+ * weaponIdForSelectSlot first, then this for the reason). */
+export const selectRefusalWhy = (
+  ship: { arsenal: Record<string, number>; line: ShipLine | null; typeTier: TypeTier },
+  slotIndex: number,
+): 'empty' | 'mount' | null => {
+  const itemId = WEAPON_SELECT_ORDER[slotIndex];
+  if (!itemId) return 'empty';
+  if ((ship.arsenal[itemId] ?? 0) <= 0) return 'empty';
+  if (!canMountWeapon(ship.line, ship.typeTier, itemId)) return 'mount';
+  return null;
+};
+
 export const canMountWeapon = (line: ShipLine | null, typeTier: TypeTier, itemId: string): boolean => {
   const cls = weaponClassFor(itemId);
   if (cls === null) return true;

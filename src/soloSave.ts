@@ -61,6 +61,7 @@ export const sanitizeSoloState = (s: GameState): GameState | null => {
     // seat's ship. The live game's own cooldown is untouched — only
     // the saved copy is scrubbed.
     if (seat.ship) delete seat.ship.fireReadyAt;
+    if (seat.ship) delete seat.ship.fireRefusedAt;
   }
   // Escort volleys stamp the same clock (escorts.ts), so a resumed
   // wing would wait out its old stamp the same way — scrubbed here

@@ -83,6 +83,21 @@ export const stepDrones = (ctx: DroneStepContext): DroneStepResult => {
     // near, old stars sweep far (src/starFleet.ts).
     const fleetRange = drone.starFleet ? starDroneRangeFor(droneStar) : Infinity;
 
+    // STAR-FLEET HEALING (Adam, 2026-10-25): the star sustains its own fleet. A
+    // star-fleet drone on station (within its fleet leash) regains FLEET_REGEN_PER_SEC
+    // HP/s up to DRONE_MAX_HEALTH — no dock trip, no hold cost (the star itself is
+    // the source). Stunned drones do not heal (rebooting); liquidating drones do not
+    // heal (they are being sold on arrival). Workforce drones are untouched here
+    // (their dock-heal below is the only workforce recovery). This overturns the
+    // verified never-heal law for the fleet; destroyed drones still respawn (~45s).
+    if (drone.starFleet && !drone.liquidating && drone.health < DRONE_MAX_HEALTH) {
+      const dxs = drone.pos.x - droneStar.pos.x;
+      const dys = drone.pos.y - droneStar.pos.y;
+      if (dxs * dxs + dys * dys <= fleetRange * fleetRange) {
+        drone.health = Math.min(DRONE_MAX_HEALTH, drone.health + PHYSICS.DRONES.FLEET_REGEN_PER_SEC / 60);
+      }
+    }
+
     // THE LAST TRIP (Adam's final shape, 2026-10-22): a
     // liquidated harvester abandons everything — its work, the
     // decoy, the dock — and flies home to be sold. Forcing its
@@ -268,6 +283,15 @@ export const stepDrones = (ctx: DroneStepContext): DroneStepResult => {
       if (closestScrap) {
         drone.targetId = (closestScrap as any).id;
         drone.state = 'collecting';
+      } else if (!drone.starFleet) {
+        // HARVESTER DRIFT (Adam, 2026-10-25): a targetless workforce drone no longer
+        // freezes in the field — it idles in slow circles (bounded by construction:
+        // circle radius = drift speed / turn rate) until scrap appears, when the next
+        // frame's searching branch acquires it as usual. Star-fleet drones keep their
+        // existing stillness (not Adam's repro; fleet behavior untouched).
+        drone.angle += PHYSICS.DRONES.DRIFT_TURN_RATE;
+        drone.pos.x += Math.cos(drone.angle) * droneSpeed * PHYSICS.DRONES.DRIFT_SPEED_FRACTION;
+        drone.pos.y += Math.sin(drone.angle) * droneSpeed * PHYSICS.DRONES.DRIFT_SPEED_FRACTION;
       }
     }
 

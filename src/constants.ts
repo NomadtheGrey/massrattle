@@ -4,17 +4,29 @@ export const PHYSICS = {
   THRUST_POWER: 0.3,
   ROTATION_SPEED: 0.025,
   SHIP_MASS: 4.0,
+  // SHIP STAR-HEALING (Adam, 2026-10-25): a ship in a friendly well regains a tiny
+  // bit of hull from the star — DRAFT 0.5 HP/s, capped at maxHealth, a separate source
+  // from hold-scrap repair (the two stack; independent of the repair toggle, it spends
+  // no hold scrap). Adam corrects the rate if wrong.
+  STAR_HEAL_PER_SEC: 0.5,
   MIN_DIST_STAR: 30,
   DELIVERY_RADIUS: 80,
   MAX_VELOCITY: 8.0, // SKIFF SPD (Adam, 2026-10-25 — pinned by
   // screenshot): the fresh Skiff's strip tile reads SPD 8.0.
+  // SPD STEP (Adam, 2026-10-25 13:12 ruling): each thrust-track
+  // level adds this much top speed — 1.0, was 0.5. The law AND
+  // the displays read this one constant (physics cap + HUD
+  // gauges + THRUST tile), so display = law by construction.
   // The tile quotes this cap (cap = MAX_VELOCITY + thrust x
-  // 0.5), so the cap IS the law the display reads — global
-  // base, every seat starts as Skiff. NOTE: thrust-only flight
-  // never reaches the cap (0.3 / mass 4.0 against 0.96 friction
+  // THRUST_SPD_STEP), so the cap IS the law the display reads —
+  // global base, every seat starts as Skiff. Standing
+  // consequence, uncorrected by Adam: crown top speeds rise to
+  // ~24–27 (thrust caps 16–19). NOTE: thrust-only flight never
+  // reaches the cap (0.3 / mass 4.0 against 0.96 friction
   // settles near 1.8); the cap governs gravity/sail-assisted
   // top speed. Faster get-up-and-go would be a THRUST_POWER
   // change, a different commission, not this one.
+  THRUST_SPD_STEP: 1.0,
   DUST_ATTRACT_FORCE: 0.1,
   ACTIVE_VAC_MULTIPLIER: 6.0,
   BASE_ATTRACT_RADIUS: 140,
@@ -29,7 +41,6 @@ export const PHYSICS = {
   STAR_GROWTH_COST_STEP: 25,
   STAR_GROWTH_MASS_MULT: 1.25,
   STAR_GROWTH_SIZE_MULT: 1.15,
-  MASS_PER_CARGO: 0.35, 
   FUEL_CONSUMPTION: 0.08,
   FUEL_REGEN: 0.06,
   FUEL_AUTO_CONVERT_THRESHOLD: 10, 
@@ -44,7 +55,11 @@ export const PHYSICS = {
     BASE_CAPACITY: 12,
     UPGRADE_BONUS: 4,
     OVERLOAD_RATIO: 0.25,
-    SLOWDOWN_PENALTY: 0.4, // Up to 40% slower at max overload
+    // PINNED LOAD CURVE (Adam, 2026-10-25): effective thrust speed as a fraction of empty —
+    // 0.85 at regular capacity, 0.50 at total capacity, piecewise linear with the knee at
+    // regular. Single punishment: this factor is the ONLY cargo penalty; cargo mass is flat.
+    LOAD_FACTOR_AT_CAPACITY: 0.85,
+    LOAD_FACTOR_AT_TOTAL: 0.50,
   },
   DRONES: {
     SPEED: 2.5,
@@ -52,6 +67,16 @@ export const PHYSICS = {
     CAPACITY: 5,
     COLLECT_RADIUS: 40,
     DEPOSIT_RADIUS: 80,
+    // HARVESTER DRIFT (Adam, 2026-10-25): a targetless workforce drone idles in slow
+    // circles instead of freezing — circle radius = SPEED × fraction / turn rate.
+    DRIFT_SPEED_FRACTION: 0.3,
+    DRIFT_TURN_RATE: 0.02,
+    // STAR-FLEET HEALING (Adam, 2026-10-25): the star sustains its own fleet — a
+    // star-fleet drone regains HP while on station (within its fleet leash, which is
+    // everywhere it works). Rate DRAFT: 1 HP/s, capped at DRONE_MAX_HEALTH. This
+    // overturns the old never-heal law (respawn was the only recovery); the
+    // workforce dock-heal is untouched. Adam corrects the rate/range if wrong.
+    FLEET_REGEN_PER_SEC: 1,
   },
   DEFENSE: {
     /** Turret engagement range, from the star's center: 1200 —

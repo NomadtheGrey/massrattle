@@ -349,9 +349,10 @@ export const consumeRepurchaseIntent = (
   seat: SeatSimState,
   payload: NetInputPayload,
   at: number,
+  drones?: readonly import('../types').Harvester[],
 ): GuestRepurchase | null => {
   if (!hasRepurchaseIntent(payload)) return null;
-  const bought = tryRepurchase(seat, at);
+  const bought = tryRepurchase(seat, at, { autoBuy: true, drones: drones ?? [] });
   if (!bought) return null;
   return {
     cost: bought.cost,
