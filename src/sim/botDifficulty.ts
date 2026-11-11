@@ -28,7 +28,8 @@ export interface BotDifficultyParams {
   fireRange: number;
   /** A hostile ship inside this distance becomes a hunt objective. */
   aggroRange: number;
-  /** Top speed, units/frame — the bot ship's own cap. */
+  /** Empty-ship top speed, units/frame. The driver scales this
+   *  maximum by the bot's load factor as cargo accumulates. */
   maxSpeed: number;
 }
 

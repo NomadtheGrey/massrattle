@@ -15,7 +15,7 @@ import {
   type SimEvent,
 } from '../sim/simEvents';
 import { DEBUG_ARMED } from '../debug';
-import { stepStarBurn, stepShipPhysics, loadFactorFor, starHealAmount, ShipPhysicsInputs } from '../sim/physics';
+import { stepStarBurn, stepShipPhysics, loadFactorFor, podDamageFactorFor, starHealAmount, ShipPhysicsInputs } from '../sim/physics';
 import { createMatch, shipSpawnPosition } from '../sim/matchAssembly';
 import { loadSoloGame, saveSoloGame, clearSoloGame } from '../soloSave';
 import { TUTORIAL_FLAG_KEY, TUTORIAL_STEP_DEFS, TUTORIAL_STIPEND, TEETH_INDEX, captureBaseline, type TutorialBaseline } from '../tutorial';
@@ -57,7 +57,7 @@ import {
 import { appendEventRecords, EventFeedEntry } from '../sim/eventFeed';
 import { turretsForMilestones, turretRingRadius, turretDamageFor, turretFireChanceFor, turretAngleAt, targetInTurretArc, applyDeliveryHeal } from '../starDefense';
 import { reconcileTurrets, stepTurretRegen, damageTurret, turretPos, TURRET_POD_DAMAGE, TURRET_HIT_RADIUS } from '../sim/turretState';
-import { weaponStatsFor, shieldMaxFor, shieldRechargePerFrame, armorHullFor, armorThrustFactor, PD_RANGE, PD_COOLDOWN_MS, pdDamageFor, decoyHealthFor, decoyLifeFramesFor, gravFactorFor, thornDamageFor, aegisAbsorbFor } from '../loadout';
+import { weaponStatsFor, shieldMaxFor, shieldRechargePerFrame, armorHullFor, armorThrustFactor, PD_RANGE, PD_COOLDOWN_MS, pdDamageFor, decoyHealthFor, decoyLifeFramesFor, gravFactorFor, thornDamageFor, starDamageFactorForTier, aegisAbsorbFor } from '../loadout';
 import { ShipLine, TypeTier, DRONE_MAX_HEALTH, typeFor, capsFor, regularCapacityFor, totalCapacityFor, typeStepPrice, hullStepPrice, hullSizeFor, HULL_STEP_HEALTH, switchToll, DRONE_PRICE, DEFENSE_DRONE_PRICE, EXTRA_MOUNT_DAMAGE, AUTO_GUN, autoGunCapFor, effectiveAutoGuns, turretMountPriceFor, ESCORT_KIND_DEFS, escortCapFor, escortKindOf, canOrderWorkforce, healCapPctFor, healRateFor, type EscortKind } from '../shipProgression';
 
 /* attractRadiusForShip moved to src/sim/seatShop.ts (B2) — one text of the law for the local verbs, the bot policy, and guest intent consumption. */
@@ -1982,6 +1982,7 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
               color: '#f472b6',
               ownerId: s.ownerId,
               life: 200, // frames
+              traveled: 0, // POD RANGE (Adam, 2026-11-11): distance law, see the cargo pass
             });
           }
 
@@ -2009,6 +2010,7 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
                 color: '#f472b6',
                 ownerId: s.ownerId,
                 life: 200, // frames
+                traveled: 0, // POD RANGE (Adam, 2026-11-11): distance law, see the cargo pass
               });
             }
           }
@@ -2045,6 +2047,9 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
                     damage: wStats.damage,
                     radius: wStats.radius || 115,
                     ownerId: s.ownerId,
+                    // STAR DAMAGE (Adam, 2026-11-11): the layer's
+                    // hull-tier factor, stamped at the drop.
+                    starFactor: starDamageFactorForTier(s.typeTier),
                   });
                 }
               } else if (cost > 0 && Date.now() - (s.fireRefusedAt ?? 0) > 2800) {
@@ -2095,6 +2100,9 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
                     ownerId: s.ownerId,
                     life: wStats.life,
                     damage: wStats.damage * dmgScale,
+                    // STAR DAMAGE (Adam, 2026-11-11): the firing
+                    // ship's hull-tier factor, stamped at creation.
+                    starFactor: starDamageFactorForTier(s.typeTier),
                     kind: weaponId || undefined,
                     pierce: wStats.pierce,
                     size: wStats.size,
@@ -2302,6 +2310,16 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
           c.pos.y += c.vel.y;
           c.life -= 1;
 
+          // POD RANGE (Adam, 2026-11-11): the pod's law is DISTANCE
+          // TRAVELED — accumulate this step's flight and disintegrate
+          // at POD_MAX_TRAVEL (750), before any star can be met: a
+          // pod cannot be lobbed across the screen. (The 200-frame
+          // life below survives as a backstop for near-stationary
+          // pods, whose travel never accumulates; at any real throw
+          // speed the distance cap binds first.)
+          c.traveled = (c.traveled ?? 0) + Math.hypot(c.vel.x, c.vel.y);
+          if (c.traveled >= PHYSICS.CARGO.POD_MAX_TRAVEL) return false;
+
           // Collision with stars (P2-2b: every seat's star — cargo
           // delivered to its OWN seat's star feeds it; cargo striking
           // a hostile star damages it. In SP the player's cargo meets
@@ -2339,9 +2357,15 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
                 applyDeliveryHeal(s, amount);
                 if (s.ownerId === localOwnerId) next.teamScrap += amount;
               } else {
-                s.integrity = Math.max(0, s.integrity - 0.01);
-                s.mass *= 0.99; // Each bit of cargo damages it
-                s.size *= 0.995;
+                // POD FALLOFF (Adam, 2026-11-11): full wound to
+                // POD_FALLOFF_START traveled, fading linearly to
+                // zero at the disintegration cap; the shrink scales
+                // with the wound. At factor 1 this is the shipped
+                // pod exactly (-0.01, mass x0.99, size x0.995).
+                const podF = podDamageFactorFor(c.traveled ?? 0);
+                s.integrity = Math.max(0, s.integrity - 0.01 * podF);
+                s.mass *= 1 - 0.01 * podF; // Each bit of cargo damages it
+                s.size *= 1 - 0.005 * podF;
                 s.lastHitTime = time;
                 next.shakeAmount = 10;
               }
@@ -2536,6 +2560,9 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
                 ownerId: ship.ownerId,
                 life: AUTO_GUN.life,
                 damage: AUTO_GUN.damage,
+                // STAR DAMAGE (Adam, 2026-11-11): a shipboard auto-
+                // gun takes its SHIP's hull-tier factor.
+                starFactor: starDamageFactorForTier(ship.typeTier),
                 kind: 'auto_gun',
                 size: 3,
               });

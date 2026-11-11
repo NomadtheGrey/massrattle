@@ -148,6 +148,12 @@ export interface Projectile {
    * pass-through behavior against drones while ship weapons connect.
    */
   damage?: number;
+  /** STAR DAMAGE (Adam, 2026-11-11): the firing platform's star-damage
+   *  factor (src/loadout.ts starDamageFactorForTier, keyed on its hull
+   *  tier), stamped at creation. A hit on a hostile star deals
+   *  damage × starFactor integrity. ABSENT = never damages a star —
+   *  star turret bolts are created without one, on purpose. */
+  starFactor?: number;
   /** Weapon id that fired this (drives special effects, e.g. ion stun). */
   kind?: string;
   /** Rail Lance: pass through targets instead of dying on the first hit. */
@@ -168,6 +174,11 @@ export interface Mine {
   /** Hull damage dealt to everything hostile inside `radius`. */
   damage: number;
   radius: number;
+  /** STAR DAMAGE (Adam, 2026-11-11): the laying ship's star-damage
+   *  factor at drop time (src/loadout.ts starDamageFactorForTier).
+   *  A blast reaching a hostile star deals damage × starFactor.
+   *  Absent (a pre-pass save) reads as the cosmetic factor. */
+  starFactor?: number;
 }
 
 /**
@@ -306,6 +317,12 @@ export interface WreckMarker {
 export interface DeployedCargo extends Scrap {
   vel: Vector2D;
   life: number;
+  /** POD RANGE (Adam, 2026-11-11): world units this pod has TRAVELED
+   *  since the throw (accumulated per step in the cargo pass). The
+   *  pod disintegrates at PHYSICS.CARGO.POD_MAX_TRAVEL and its star
+   *  damage fades from POD_FALLOFF_START — a distance law, exact at
+   *  any frame rate. Absent (a pre-pass save) reads as 0. */
+  traveled?: number;
   /** Seat-scoped ownerId (Phase 2, src/sim/ownership.ts): the seat
    * that owns this entity for the whole match, whoever controls it. */
   ownerId: string;

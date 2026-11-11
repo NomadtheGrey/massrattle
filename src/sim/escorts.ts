@@ -31,7 +31,7 @@
  */
 
 import { BOT_DRIVER } from './botDriver';
-import { weaponStatsFor } from '../loadout';
+import { weaponStatsFor, starDamageFactorForTier } from '../loadout';
 import { EXTRA_MOUNT_DAMAGE, typeFor, healCapPctFor, healRateFor } from '../shipProgression';
 import { isVisibleTo } from './stealth';
 import { repairFrame, ESCORT_DOCK_PAD } from './repair';
@@ -257,6 +257,10 @@ export const stepEscorts = (ctx: EscortStepContext): EscortShip[] => {
             ownerId: escort.ownerId,
             life: wStats.life,
             damage: wStats.damage * dmgScale,
+            // STAR DAMAGE (Adam, 2026-11-11): an escort's bolt takes
+            // the ESCORT's own hull tier (1–3 — cosmetic), never its
+            // carrier's: the stamp keys on the firing platform.
+            starFactor: starDamageFactorForTier(escort.typeTier),
             kind: weaponId || undefined,
             pierce: wStats.pierce,
             size: wStats.size,

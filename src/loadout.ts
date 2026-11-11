@@ -395,9 +395,30 @@ export const sailThrustFor = (tier: number): number => 0.02 + 0.01 * tier;
 /** Siphon VAC: fuel gained per enemy projectile eaten — T1 2, +1/tier, T5 6. */
 export const siphonFuelFor = (tier: number): number => 1 + tier;
 /** Thorn Hull: damage handed back — T1 10, +4/tier, T5 26. Against the
- * star it lands as integrity damage on the universal x0.002 star scale
- * (per bolt that reaches the hull; per second inside the burn zone);
- * drones in hull contact take it per second. */
+ * star it lands as integrity damage on the tiered star-damage scale
+ * (starDamageFactorForTier below; per bolt that reaches the hull; per
+ * second inside the burn zone); drones in hull contact take it per second. */
 export const thornDamageFor = (tier: number): number => 6 + 4 * tier;
+/**
+ * STAR DAMAGE FACTORS (Adam, 2026-11-11 — the star-damage pass; ALL
+ * DRAFT for the numbers pass): what a ship-fired hit does to a star's
+ * integrity is its damage × a factor keyed on the FIRING platform's
+ * HULL tier (typeTier — the ship's tier, never the weapon's). The old
+ * universal ×0.002 let every gun assassinate a star in seconds; the
+ * tiered shape keeps a COSMETIC path for all hulls (visible, never a
+ * kill) and reserves meaningful damage for T4–T5 hulls under a siege.
+ * FLAT per-hit form, as ruled — the fastest-gun ordering question is
+ * deferred to the arsenal review, not solved here. Star turret bolts
+ * carry no factor at all and never damage stars (Adam, 2026-10-20).
+ */
+export const STAR_DAMAGE_FACTOR_COSMETIC = 0.00002;
+export const STAR_DAMAGE_FACTOR_T4 = 0.0001;
+export const STAR_DAMAGE_FACTOR_T5 = 0.0002;
+export const starDamageFactorForTier = (tier: number | null | undefined): number =>
+  tier !== null && tier !== undefined && tier >= 5
+    ? STAR_DAMAGE_FACTOR_T5
+    : tier === 4
+      ? STAR_DAMAGE_FACTOR_T4
+      : STAR_DAMAGE_FACTOR_COSMETIC;
 /** Scrap Aegis: hull damage soaked per scrap of cargo burned — T1 6, +2/tier, T5 14. */
 export const aegisAbsorbFor = (tier: number): number => 4 + 2 * tier;
