@@ -34,7 +34,8 @@
 
 import { PHYSICS } from '../constants';
 import { weaponStatsFor } from '../loadout';
-import { EXTRA_MOUNT_DAMAGE, typeFor, totalCapacityFor, healCapPctFor, healRateFor } from '../shipProgression';
+import { EXTRA_MOUNT_DAMAGE, typeFor, regularCapacityFor, totalCapacityFor, healCapPctFor, healRateFor } from '../shipProgression';
+import { loadFactorFor } from './physics';
 import { isVisibleTo } from './stealth';
 import { repairFrame } from './repair';
 import { areHostile, type TeamSeatLike } from './teams';
@@ -55,10 +56,11 @@ import type {
 /** Bot driver tuning — DRAFT numbers, one block, Adam's pin pending. */
 export const BOT_DRIVER = {
   /** Top speed (units/frame) for ESCORTS (escorts.ts caps to this).
-   *  Bot SHIPS cap by rung (BOT_DIFFICULTY.maxSpeed) instead; the
-   *  IMPOSSIBLE rung (4.2) is today's bot-ship cap, preserved.
-   *  (The old comment claiming a player cap of 5 was stale —
-   *  PHYSICS.MAX_VELOCITY is 8.0 + THRUST_SPD_STEP/thrust.) */
+   *  Bot SHIPS use the difficulty rungs as EMPTY-ship cruise maxima;
+   *  stepBotShip scales the rung cap by the ship's load factor under
+   *  way. The IMPOSSIBLE rung (4.2) is today's empty bot-ship cap,
+   *  preserved. (The old comment claiming a player cap of 5 was
+   *  stale — PHYSICS.MAX_VELOCITY is 8.0 + THRUST_SPD_STEP/thrust.) */
   MAX_SPEED: 4.2,
   /** Acceleration along the ship's facing (units/frame^2). */
   ACCEL: 0.22,
@@ -328,6 +330,16 @@ export const stepBotShip = (
     projectiles: [],
   };
   const capacity = totalCapacityFor(ship);
+  // BOT LOAD (same-limitations ruling; Adam struck the held audit
+  // item 2026-11-11): the pinned player load curve reaches bot
+  // engine flight too. regularCapacityFor carries the per-line
+  // cargoBonus anchor, so loadFactorFor gives 1.0 empty, 0.85 at
+  // this hull's regular capacity, and 0.50 at its total capacity.
+  // It scales BOTH engine acceleration and the difficulty rung's
+  // cruise cap below — scaling acceleration alone would barely be
+  // visible because the driver's uncapped thrust terminal (~10.8)
+  // sits far above every rung cap.
+  const loadFactor = loadFactorFor(ship.carrying, regularCapacityFor(ship), capacity);
 
   // --- Decide the destination -------------------------------------
   // B1 POSTURES (RULED, ReadMeFiles/BOTS.md): flight judgment,
@@ -592,8 +604,13 @@ export const stepBotShip = (
     ship.angle = angleLerp(ship.angle, want, (BOT_DRIVER.TURN_RATE + ship.upgrades.handling * 0.005) * dtFrames);
     if ((ship.fuel ?? maxFuel) > PHYSICS.FUEL_CONSUMPTION) {
       ship.fuel = (ship.fuel ?? maxFuel) - PHYSICS.FUEL_CONSUMPTION;
-      ship.vel.x += Math.cos(ship.angle) * (BOT_DRIVER.ACCEL + ship.upgrades.thrust * 0.08) * dtFrames;
-      ship.vel.y += Math.sin(ship.angle) * (BOT_DRIVER.ACCEL + ship.upgrades.thrust * 0.08) * dtFrames;
+      // The bot base and every bought thrust step are inside the
+      // load scaling, exactly as the player's thrust power is:
+      // a bought track still counts at every load, and no part of
+      // engine acceleration escapes the cargo penalty.
+      const thrustAccel = (BOT_DRIVER.ACCEL + ship.upgrades.thrust * 0.08) * loadFactor;
+      ship.vel.x += Math.cos(ship.angle) * thrustAccel * dtFrames;
+      ship.vel.y += Math.sin(ship.angle) * thrustAccel * dtFrames;
       thrusting = true;
     }
   }
@@ -626,12 +643,17 @@ export const stepBotShip = (
   // band the bot flies a slow final, so arrival momentum cannot
   // carry it past the stand-off into the burn (see the siege
   // destination note above).
-  let speedCap = diff.maxSpeed;
+  // Difficulty rungs are EMPTY-ship cruise maxima: the same load
+  // factor that scales engine acceleration scales the cap, so a
+  // bot cruises ~15% slower at regular capacity and ~50% slower
+  // at total capacity. The siege approach discipline remains a
+  // separate ceiling and can only lower the loaded cap further.
+  let speedCap = diff.maxSpeed * loadFactor;
   if (objective === 'siege' && siegeStar) {
     const surfD =
       Math.hypot(ship.pos.x - siegeStar.pos.x, ship.pos.y - siegeStar.pos.y) -
       siegeStar.size;
-    if (surfD < BOT_DRIVER.SIEGE_STANDOFF + 260) speedCap = 1.6;
+    if (surfD < BOT_DRIVER.SIEGE_STANDOFF + 260) speedCap = Math.min(speedCap, 1.6);
   }
   const speed = Math.hypot(ship.vel.x, ship.vel.y);
   if (speed > speedCap) {
