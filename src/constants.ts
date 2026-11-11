@@ -60,6 +60,14 @@ export const PHYSICS = {
     // regular. Single punishment: this factor is the ONLY cargo penalty; cargo mass is flat.
     LOAD_FACTOR_AT_CAPACITY: 0.85,
     LOAD_FACTOR_AT_TOTAL: 0.50,
+    // POD RANGE (Adam, 2026-11-11; DRAFT for the numbers pass): a thrown
+    // scrap pod's star damage is full from the throw to POD_FALLOFF_START
+    // units TRAVELED, fades linearly to zero at POD_MAX_TRAVEL ('half the
+    // average screen width'), and the pod disintegrates there. Distance,
+    // not frames or seconds — exact at any frame rate, and a faster ship's
+    // throw reaches no farther. Feeding a friendly star stays whole.
+    POD_MAX_TRAVEL: 750,
+    POD_FALLOFF_START: 375,
   },
   DRONES: {
     SPEED: 2.5,

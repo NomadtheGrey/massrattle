@@ -26,6 +26,8 @@ import {
   mirrorReflectDamageFor,
   siphonFuelFor,
   thornDamageFor,
+  starDamageFactorForTier,
+  STAR_DAMAGE_FACTOR_COSMETIC,
 } from '../loadout';
 import { areHostile } from './teams';
 import { damageTurret, turretPos, TURRET_HIT_RADIUS } from './turretState';
@@ -69,7 +71,10 @@ export const stepMines = (ctx: MineStepContext): Mine[] => {
       const s = seat.star;
       if (!areHostile(simSeats, s.ownerId, mine.ownerId)) continue;
       if (Math.hypot(s.pos.x - mine.pos.x, s.pos.y - mine.pos.y) < mine.radius + s.size) {
-        s.integrity -= mine.damage * 0.002;
+        // STAR DAMAGE (Adam, 2026-11-11): the blast wounds the star
+        // on the tier scale — the laying ship's factor, stamped at
+        // the drop (an unstamped pre-pass mine reads cosmetic).
+        s.integrity -= mine.damage * (mine.starFactor ?? STAR_DAMAGE_FACTOR_COSMETIC);
         s.lastHitTime = time;
       }
     }
@@ -140,12 +145,16 @@ export const stepProjectiles = (ctx: ProjectileStepContext): Projectile[] => {
     // STARS BLOCK AMMO (Adam, 2026-10-21): a projectile that
     // reaches ANY star's surface terminates there — stars are
     // terrain, checked before every other hit. Damage applies
-    // only where the standing rules already allow it: ship-fired
-    // weapons (kind set) against a HOSTILE star, on the universal
-    // damage x 0.002 scale (Slice 4 repair: the old x 0.5 would
-    // have ended games outright). Turret bolts (kind unset) NEVER
-    // damage stars (Adam's ruling, 2026-10-20) and friendly stars
-    // take no damage — for those bolts this is purely a stop.
+    // only where the standing rules allow it: a STAMPED projectile
+    // (starFactor set at creation from the firing platform's hull
+    // tier — src/loadout.ts) against a HOSTILE star, dealing
+    // damage × starFactor integrity (STAR DAMAGE PASS, Adam,
+    // 2026-11-11: the old universal ×0.002 assassinated stars in
+    // seconds; the tiered factors make T1–T3 fire cosmetic and
+    // reserve a siege bite for T4–T5 hulls). Turret bolts carry
+    // no stamp and NEVER damage stars (Adam's ruling, 2026-10-20);
+    // friendly stars take no damage — for those bolts this is
+    // purely a stop.
     // (TEAMS: "hostile star" reads hostile TEAM via areHostile,
     // as everywhere here.)
     // THE RAIL LANCE EXCEPTION (Adam's ruling, 2026-10-21): the
@@ -189,14 +198,14 @@ export const stepProjectiles = (ctx: ProjectileStepContext): Projectile[] => {
           areHostile(simSeats, s.ownerId, p.ownerId) &&
           !(p.hitIds || []).includes(hitKey)
         ) {
-          s.integrity -= (p.damage !== undefined ? p.damage : PHYSICS.DEFENSE.DAMAGE) * 0.002;
+          s.integrity -= (p.damage !== undefined ? p.damage : PHYSICS.DEFENSE.DAMAGE) * (p.starFactor ?? 0);
           s.lastHitTime = time;
           (p.hitIds = p.hitIds || []).push(hitKey);
         }
         continue;
       }
-      if (p.kind !== undefined && areHostile(simSeats, s.ownerId, p.ownerId)) {
-        s.integrity -= (p.damage !== undefined ? p.damage : PHYSICS.DEFENSE.DAMAGE) * 0.002;
+      if ((p.starFactor ?? 0) > 0 && areHostile(simSeats, s.ownerId, p.ownerId)) {
+        s.integrity -= (p.damage !== undefined ? p.damage : PHYSICS.DEFENSE.DAMAGE) * (p.starFactor ?? 0);
         s.lastHitTime = time;
       }
       return false;
@@ -251,6 +260,11 @@ export const stepProjectiles = (ctx: ProjectileStepContext): Projectile[] => {
         p.vel.y = -p.vel.y;
         p.damage = mirrorReflectDamageFor(hyTier);
         p.kind = 'mirror_sail';
+        // STAR DAMAGE (Adam, 2026-11-11): the reflected bolt flies
+        // as THIS ship's shot now — re-stamp with its hull tier's
+        // factor (a reflected turret bolt gains a stamp here; it
+        // had none as a turret bolt).
+        p.starFactor = starDamageFactorForTier(ship.typeTier);
         next.shakeAmount = Math.max(next.shakeAmount, 5);
         next.glitchActive = true;
         next.lastGlitchTime = time;
@@ -274,13 +288,15 @@ export const stepProjectiles = (ctx: ProjectileStepContext): Projectile[] => {
         ship.lastHitByOwnerId = p.ownerId;
         // THORN HULL (Phase 1b): a bolt that reaches the hull was
         // fired point blank — the armor bites the firing star back
-        // on the universal x0.002 scale. Bolts the shield or aegis
+        // on the STAR DAMAGE tier scale (Adam, 2026-11-11: keyed on
+        // the THORN SHIP's hull tier — cosmetic for T1–T3 hulls, a
+        // siege bite only at T4–T5). Bolts the shield or aegis
         // ate never touch the armor, so they don't bite. (The
         // firing star is the bolt owner's star — in SP, the
         // enemy star, as shipped.)
         if (hyId === 'thorn_hull') {
           const firingStar = starByOwnerId(p.ownerId);
-          firingStar.integrity -= thornDamageFor(hyTier) * 0.002;
+          firingStar.integrity -= thornDamageFor(hyTier) * starDamageFactorForTier(ship.typeTier);
           firingStar.lastHitTime = time;
         }
         next.shakeAmount = 15;

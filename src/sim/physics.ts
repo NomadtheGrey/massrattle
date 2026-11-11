@@ -14,7 +14,7 @@
 
 import { PHYSICS } from '../constants';
 import { typeFor } from '../shipProgression';
-import { SAIL_RANGE, sailThrustFor, thornDamageFor } from '../loadout';
+import { SAIL_RANGE, sailThrustFor, thornDamageFor, starDamageFactorForTier } from '../loadout';
 import { effectiveRadiusForStar } from './starStages';
 import { areHostile } from './teams';
 import type { GameState, SeatSimState, Ship, Star } from '../types';
@@ -65,10 +65,13 @@ export const stepStarBurn = (ctx: StarBurnContext): void => {
     // the Scrap Aegis is armor, not shield — it soaks burn too.
     ship.health -= aegisAbsorb(0.15 * (1 - (eDist / (burnStar.size + 150))));
     // THORN HULL at point blank (Phase 1b): sitting in the burn is
-    // the star point-blanking you, and the armor bites back —
-    // thorn damage per second on the universal x0.002 star scale.
+    // the star point-blanking you, and the armor bites back — thorn
+    // damage per second on the STAR DAMAGE tier scale (Adam,
+    // 2026-11-11: the factor keys on THIS ship's hull tier, so the
+    // bite is cosmetic for T1–T3 hulls and siege-sized only at
+    // T4–T5; proximity itself remains the counter).
     if (hyId === 'thorn_hull') {
-      burnStar.integrity = Math.max(0, burnStar.integrity - (thornDamageFor(hyTier) * 0.002) / 60);
+      burnStar.integrity = Math.max(0, burnStar.integrity - (thornDamageFor(hyTier) * starDamageFactorForTier(ship.typeTier)) / 60);
       burnStar.lastHitTime = time;
     }
     if (Math.random() < 0.05) next.shakeAmount = 3;
@@ -149,6 +152,23 @@ export const loadFactorFor = (carrying: number, regularCapacity: number, totalCa
   if (span <= 0) return atCap;
   if (carrying >= totalCapacity) return atTotal;
   return atCap - (atCap - atTotal) * ((carrying - regularCapacity) / span);
+};
+
+/**
+ * POD DAMAGE FALLOFF (Adam, 2026-11-11): a thrown scrap pod wounds a
+ * hostile star at full strength (integrity + shrink) until it has
+ * traveled PHYSICS.CARGO.POD_FALLOFF_START units, then the wound
+ * fades linearly to zero at POD_MAX_TRAVEL, where the pod
+ * disintegrates. The shrink scales with the same factor (the build
+ * shape ruled with the pass). Feeding a friendly star is NOT scaled
+ * — a pod that arrives feeds whole, at any distance it survived.
+ */
+export const podDamageFactorFor = (traveled: number): number => {
+  const start = PHYSICS.CARGO.POD_FALLOFF_START;
+  const cap = PHYSICS.CARGO.POD_MAX_TRAVEL;
+  if (traveled <= start) return 1.0;
+  if (traveled >= cap) return 0;
+  return 1 - (traveled - start) / (cap - start);
 };
 
 /**
