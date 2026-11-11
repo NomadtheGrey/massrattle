@@ -33,7 +33,7 @@
  */
 
 import { PHYSICS } from '../constants';
-import { weaponStatsFor, starDamageFactorForTier } from '../loadout';
+import { weaponStatsFor, STAR_DAMAGE_FACTOR } from '../loadout';
 import { EXTRA_MOUNT_DAMAGE, typeFor, regularCapacityFor, totalCapacityFor, healCapPctFor, healRateFor } from '../shipProgression';
 import { loadFactorFor } from './physics';
 import { isVisibleTo } from './stealth';
@@ -824,9 +824,9 @@ export const stepBotShip = (
             ownerId: ship.ownerId,
             life: wStats.life,
             damage: wStats.damage * dmgScale,
-            // STAR DAMAGE (Adam, 2026-11-11): stamp the bot ship's
-            // hull-tier factor at creation, like every ship volley.
-            starFactor: starDamageFactorForTier(ship.typeTier),
+            // STAR DAMAGE (Adam, 2026-11-11): the universal rate,
+            // stamped at creation like every ship volley.
+            starFactor: STAR_DAMAGE_FACTOR,
             kind: weaponId || undefined,
             pierce: wStats.pierce,
             size: wStats.size,

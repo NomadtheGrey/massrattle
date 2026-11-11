@@ -57,7 +57,7 @@ import {
 import { appendEventRecords, EventFeedEntry } from '../sim/eventFeed';
 import { turretsForMilestones, turretRingRadius, turretDamageFor, turretFireChanceFor, turretAngleAt, targetInTurretArc, applyDeliveryHeal } from '../starDefense';
 import { reconcileTurrets, stepTurretRegen, damageTurret, turretPos, TURRET_POD_DAMAGE, TURRET_HIT_RADIUS } from '../sim/turretState';
-import { weaponStatsFor, shieldMaxFor, shieldRechargePerFrame, armorHullFor, armorThrustFactor, PD_RANGE, PD_COOLDOWN_MS, pdDamageFor, decoyHealthFor, decoyLifeFramesFor, gravFactorFor, thornDamageFor, starDamageFactorForTier, aegisAbsorbFor } from '../loadout';
+import { weaponStatsFor, shieldMaxFor, shieldRechargePerFrame, armorHullFor, armorThrustFactor, PD_RANGE, PD_COOLDOWN_MS, pdDamageFor, decoyHealthFor, decoyLifeFramesFor, gravFactorFor, thornDamageFor, STAR_DAMAGE_FACTOR, aegisAbsorbFor } from '../loadout';
 import { ShipLine, TypeTier, DRONE_MAX_HEALTH, typeFor, capsFor, regularCapacityFor, totalCapacityFor, typeStepPrice, hullStepPrice, hullSizeFor, HULL_STEP_HEALTH, switchToll, DRONE_PRICE, DEFENSE_DRONE_PRICE, EXTRA_MOUNT_DAMAGE, AUTO_GUN, autoGunCapFor, effectiveAutoGuns, turretMountPriceFor, ESCORT_KIND_DEFS, escortCapFor, escortKindOf, canOrderWorkforce, healCapPctFor, healRateFor, type EscortKind } from '../shipProgression';
 
 /* attractRadiusForShip moved to src/sim/seatShop.ts (B2) — one text of the law for the local verbs, the bot policy, and guest intent consumption. */
@@ -2047,9 +2047,9 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
                     damage: wStats.damage,
                     radius: wStats.radius || 115,
                     ownerId: s.ownerId,
-                    // STAR DAMAGE (Adam, 2026-11-11): the layer's
-                    // hull-tier factor, stamped at the drop.
-                    starFactor: starDamageFactorForTier(s.typeTier),
+                    // STAR DAMAGE (Adam, 2026-11-11): the universal
+                    // rate, stamped at the drop.
+                    starFactor: STAR_DAMAGE_FACTOR,
                   });
                 }
               } else if (cost > 0 && Date.now() - (s.fireRefusedAt ?? 0) > 2800) {
@@ -2100,9 +2100,9 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
                     ownerId: s.ownerId,
                     life: wStats.life,
                     damage: wStats.damage * dmgScale,
-                    // STAR DAMAGE (Adam, 2026-11-11): the firing
-                    // ship's hull-tier factor, stamped at creation.
-                    starFactor: starDamageFactorForTier(s.typeTier),
+                    // STAR DAMAGE (Adam, 2026-11-11): the universal
+                    // rate, stamped at creation.
+                    starFactor: STAR_DAMAGE_FACTOR,
                     kind: weaponId || undefined,
                     pierce: wStats.pierce,
                     size: wStats.size,
@@ -2560,9 +2560,9 @@ export const useGameLoop = (width: number, height: number, net?: NetSession | nu
                 ownerId: ship.ownerId,
                 life: AUTO_GUN.life,
                 damage: AUTO_GUN.damage,
-                // STAR DAMAGE (Adam, 2026-11-11): a shipboard auto-
-                // gun takes its SHIP's hull-tier factor.
-                starFactor: starDamageFactorForTier(ship.typeTier),
+                // STAR DAMAGE (Adam, 2026-11-11): the universal
+                // rate, like the ship's own guns.
+                starFactor: STAR_DAMAGE_FACTOR,
                 kind: 'auto_gun',
                 size: 3,
               });

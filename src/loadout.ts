@@ -395,30 +395,24 @@ export const sailThrustFor = (tier: number): number => 0.02 + 0.01 * tier;
 /** Siphon VAC: fuel gained per enemy projectile eaten — T1 2, +1/tier, T5 6. */
 export const siphonFuelFor = (tier: number): number => 1 + tier;
 /** Thorn Hull: damage handed back — T1 10, +4/tier, T5 26. Against the
- * star it lands as integrity damage on the tiered star-damage scale
- * (starDamageFactorForTier below; per bolt that reaches the hull; per
+ * star it lands as integrity damage at the single universal star rate
+ * (STAR_DAMAGE_FACTOR below; per bolt that reaches the hull; per
  * second inside the burn zone); drones in hull contact take it per second. */
 export const thornDamageFor = (tier: number): number => 6 + 4 * tier;
 /**
- * STAR DAMAGE FACTORS (Adam, 2026-11-11 — the star-damage pass; ALL
- * DRAFT for the numbers pass): what a ship-fired hit does to a star's
- * integrity is its damage × a factor keyed on the FIRING platform's
- * HULL tier (typeTier — the ship's tier, never the weapon's). The old
- * universal ×0.002 let every gun assassinate a star in seconds; the
- * tiered shape keeps a COSMETIC path for all hulls (visible, never a
- * kill) and reserves meaningful damage for T4–T5 hulls under a siege.
- * FLAT per-hit form, as ruled — the fastest-gun ordering question is
- * deferred to the arsenal review, not solved here. Star turret bolts
- * carry no factor at all and never damage stars (Adam, 2026-10-20).
+ * STAR DAMAGE FACTOR (Adam, 2026-11-11): ONE universal rate for every
+ * ship-fired hit on a star — damage × 0.00002 integrity, from ANY
+ * hull. There is NO hull-tier multiplier: big ships hurt stars more
+ * only through the firepower their price buys (weapon tiers, extra
+ * mounts, access), never through an artificial factor. The old
+ * universal ×0.002 assassinated stars in seconds; this rate keeps
+ * gun damage on a star cosmetic — visible, never a kill route; the
+ * thrown scrap pod is the star weapon. (A hull-tier table shipped
+ * briefly in merge #37 and was removed the same day on Adam's
+ * ruling: 'we don't need artificial multipliers going on.' Do not
+ * reintroduce tier keying here.) Star turret bolts carry no stamp
+ * at all and never damage stars (Adam, 2026-10-20).
  */
-export const STAR_DAMAGE_FACTOR_COSMETIC = 0.00002;
-export const STAR_DAMAGE_FACTOR_T4 = 0.0001;
-export const STAR_DAMAGE_FACTOR_T5 = 0.0002;
-export const starDamageFactorForTier = (tier: number | null | undefined): number =>
-  tier !== null && tier !== undefined && tier >= 5
-    ? STAR_DAMAGE_FACTOR_T5
-    : tier === 4
-      ? STAR_DAMAGE_FACTOR_T4
-      : STAR_DAMAGE_FACTOR_COSMETIC;
+export const STAR_DAMAGE_FACTOR = 0.00002;
 /** Scrap Aegis: hull damage soaked per scrap of cargo burned — T1 6, +2/tier, T5 14. */
 export const aegisAbsorbFor = (tier: number): number => 4 + 2 * tier;

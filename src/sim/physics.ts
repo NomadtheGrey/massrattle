@@ -14,7 +14,7 @@
 
 import { PHYSICS } from '../constants';
 import { typeFor } from '../shipProgression';
-import { SAIL_RANGE, sailThrustFor, thornDamageFor, starDamageFactorForTier } from '../loadout';
+import { SAIL_RANGE, sailThrustFor, thornDamageFor, STAR_DAMAGE_FACTOR } from '../loadout';
 import { effectiveRadiusForStar } from './starStages';
 import { areHostile } from './teams';
 import type { GameState, SeatSimState, Ship, Star } from '../types';
@@ -65,13 +65,13 @@ export const stepStarBurn = (ctx: StarBurnContext): void => {
     // the Scrap Aegis is armor, not shield — it soaks burn too.
     ship.health -= aegisAbsorb(0.15 * (1 - (eDist / (burnStar.size + 150))));
     // THORN HULL at point blank (Phase 1b): sitting in the burn is
-    // the star point-blanking you, and the armor bites back — thorn
-    // damage per second on the STAR DAMAGE tier scale (Adam,
-    // 2026-11-11: the factor keys on THIS ship's hull tier, so the
-    // bite is cosmetic for T1–T3 hulls and siege-sized only at
-    // T4–T5; proximity itself remains the counter).
+    // the star point-blanking you, and the armor bites back —
+    // thorn damage per second at the single universal star rate
+    // (Adam, 2026-11-11: the same from every hull — at that rate
+    // the bite is a ~32-minute proposition even for the best
+    // thorn, and proximity itself remains the counter).
     if (hyId === 'thorn_hull') {
-      burnStar.integrity = Math.max(0, burnStar.integrity - (thornDamageFor(hyTier) * starDamageFactorForTier(ship.typeTier)) / 60);
+      burnStar.integrity = Math.max(0, burnStar.integrity - (thornDamageFor(hyTier) * STAR_DAMAGE_FACTOR) / 60);
       burnStar.lastHitTime = time;
     }
     if (Math.random() < 0.05) next.shakeAmount = 3;
