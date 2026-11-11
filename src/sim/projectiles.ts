@@ -26,8 +26,7 @@ import {
   mirrorReflectDamageFor,
   siphonFuelFor,
   thornDamageFor,
-  starDamageFactorForTier,
-  STAR_DAMAGE_FACTOR_COSMETIC,
+  STAR_DAMAGE_FACTOR,
 } from '../loadout';
 import { areHostile } from './teams';
 import { damageTurret, turretPos, TURRET_HIT_RADIUS } from './turretState';
@@ -72,9 +71,9 @@ export const stepMines = (ctx: MineStepContext): Mine[] => {
       if (!areHostile(simSeats, s.ownerId, mine.ownerId)) continue;
       if (Math.hypot(s.pos.x - mine.pos.x, s.pos.y - mine.pos.y) < mine.radius + s.size) {
         // STAR DAMAGE (Adam, 2026-11-11): the blast wounds the star
-        // on the tier scale — the laying ship's factor, stamped at
-        // the drop (an unstamped pre-pass mine reads cosmetic).
-        s.integrity -= mine.damage * (mine.starFactor ?? STAR_DAMAGE_FACTOR_COSMETIC);
+        // at the single universal rate, stamped at the drop (an
+        // unstamped pre-pass mine reads the same rate).
+        s.integrity -= mine.damage * (mine.starFactor ?? STAR_DAMAGE_FACTOR);
         s.lastHitTime = time;
       }
     }
@@ -146,12 +145,13 @@ export const stepProjectiles = (ctx: ProjectileStepContext): Projectile[] => {
     // reaches ANY star's surface terminates there — stars are
     // terrain, checked before every other hit. Damage applies
     // only where the standing rules allow it: a STAMPED projectile
-    // (starFactor set at creation from the firing platform's hull
-    // tier — src/loadout.ts) against a HOSTILE star, dealing
-    // damage × starFactor integrity (STAR DAMAGE PASS, Adam,
-    // 2026-11-11: the old universal ×0.002 assassinated stars in
-    // seconds; the tiered factors make T1–T3 fire cosmetic and
-    // reserve a siege bite for T4–T5 hulls). Turret bolts carry
+    // (starFactor set at creation — src/loadout.ts) against a
+    // HOSTILE star, dealing damage × starFactor integrity (STAR
+    // DAMAGE, Adam, 2026-11-11: ONE universal rate from every hull
+    // — the old ×0.002 assassinated stars in seconds, and the
+    // hull-tier table that briefly replaced it was removed the same
+    // day: no artificial multipliers; big ships hurt stars through
+    // purchased firepower, not a factor). Turret bolts carry
     // no stamp and NEVER damage stars (Adam's ruling, 2026-10-20);
     // friendly stars take no damage — for those bolts this is
     // purely a stop.
@@ -261,10 +261,10 @@ export const stepProjectiles = (ctx: ProjectileStepContext): Projectile[] => {
         p.damage = mirrorReflectDamageFor(hyTier);
         p.kind = 'mirror_sail';
         // STAR DAMAGE (Adam, 2026-11-11): the reflected bolt flies
-        // as THIS ship's shot now — re-stamp with its hull tier's
-        // factor (a reflected turret bolt gains a stamp here; it
+        // as THIS ship's shot now — stamp it with the universal
+        // rate (a reflected turret bolt gains a stamp here; it
         // had none as a turret bolt).
-        p.starFactor = starDamageFactorForTier(ship.typeTier);
+        p.starFactor = STAR_DAMAGE_FACTOR;
         next.shakeAmount = Math.max(next.shakeAmount, 5);
         next.glitchActive = true;
         next.lastGlitchTime = time;
@@ -288,15 +288,14 @@ export const stepProjectiles = (ctx: ProjectileStepContext): Projectile[] => {
         ship.lastHitByOwnerId = p.ownerId;
         // THORN HULL (Phase 1b): a bolt that reaches the hull was
         // fired point blank — the armor bites the firing star back
-        // on the STAR DAMAGE tier scale (Adam, 2026-11-11: keyed on
-        // the THORN SHIP's hull tier — cosmetic for T1–T3 hulls, a
-        // siege bite only at T4–T5). Bolts the shield or aegis
+        // at the single universal star rate (Adam, 2026-11-11: the
+        // same from every hull — no tier keying). Bolts the shield or aegis
         // ate never touch the armor, so they don't bite. (The
         // firing star is the bolt owner's star — in SP, the
         // enemy star, as shipped.)
         if (hyId === 'thorn_hull') {
           const firingStar = starByOwnerId(p.ownerId);
-          firingStar.integrity -= thornDamageFor(hyTier) * starDamageFactorForTier(ship.typeTier);
+          firingStar.integrity -= thornDamageFor(hyTier) * STAR_DAMAGE_FACTOR;
           firingStar.lastHitTime = time;
         }
         next.shakeAmount = 15;

@@ -148,11 +148,11 @@ export interface Projectile {
    * pass-through behavior against drones while ship weapons connect.
    */
   damage?: number;
-  /** STAR DAMAGE (Adam, 2026-11-11): the firing platform's star-damage
-   *  factor (src/loadout.ts starDamageFactorForTier, keyed on its hull
-   *  tier), stamped at creation. A hit on a hostile star deals
-   *  damage × starFactor integrity. ABSENT = never damages a star —
-   *  star turret bolts are created without one, on purpose. */
+  /** STAR DAMAGE (Adam, 2026-11-11): the universal star-damage rate
+   *  (src/loadout.ts STAR_DAMAGE_FACTOR), stamped at creation. A hit
+   *  on a hostile star deals damage × starFactor integrity — the same
+   *  from every hull. ABSENT = never damages a star — star turret
+   *  bolts are created without one, on purpose. */
   starFactor?: number;
   /** Weapon id that fired this (drives special effects, e.g. ion stun). */
   kind?: string;
@@ -174,10 +174,10 @@ export interface Mine {
   /** Hull damage dealt to everything hostile inside `radius`. */
   damage: number;
   radius: number;
-  /** STAR DAMAGE (Adam, 2026-11-11): the laying ship's star-damage
-   *  factor at drop time (src/loadout.ts starDamageFactorForTier).
-   *  A blast reaching a hostile star deals damage × starFactor.
-   *  Absent (a pre-pass save) reads as the cosmetic factor. */
+  /** STAR DAMAGE (Adam, 2026-11-11): the universal star-damage rate
+   *  at drop time (src/loadout.ts STAR_DAMAGE_FACTOR). A blast
+   *  reaching a hostile star deals damage × starFactor. Absent (a
+   *  pre-pass save) reads as the same universal rate. */
   starFactor?: number;
 }
 

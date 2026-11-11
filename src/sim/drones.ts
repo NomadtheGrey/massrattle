@@ -19,7 +19,7 @@ import { applyDeliveryHeal } from '../starDefense';
 import { areHostile } from './teams';
 import { repairFrame, DRONE_DOCK_HEALTH, DRONE_DOCK_RATE_PER_SEC } from './repair';
 import { AUTO_GUN, DEFENSE_DRONE, DRONE_MAX_HEALTH, DRONE_PRICE, canOrderWorkforce, typeFor } from '../shipProgression';
-import { starDamageFactorForTier } from '../loadout';
+import { STAR_DAMAGE_FACTOR } from '../loadout';
 import type { GameState, Harvester, SeatSimState, Star, Vector2D } from '../types';
 
 export interface DroneStepContext {
@@ -160,10 +160,9 @@ export const stepDrones = (ctx: DroneStepContext): DroneStepResult => {
             ownerId: drone.ownerId,
             life: AUTO_GUN.life,
             damage: DEFENSE_DRONE.damage,
-            // STAR DAMAGE (Adam, 2026-11-11): a defense drone's bolt
-            // takes its OWNER SHIP's hull-tier factor; shipless (star-
-            // anchored) reads tier 1 — cosmetic.
-            starFactor: starDamageFactorForTier(ownerShip?.typeTier ?? 1),
+            // STAR DAMAGE (Adam, 2026-11-11): the universal rate,
+            // like every ship-fired bolt.
+            starFactor: STAR_DAMAGE_FACTOR,
             kind: 'auto_gun',
             size: 3,
           });
