@@ -1072,28 +1072,21 @@ export const HUD: React.FC<HUDProps> = ({
           (Adam, 2026-10-25): min-h-0 lets this flex column shrink
           below its content height, overflow-y-auto scrolls it when
           taller than the viewport, so the foot (Comms/Logs hull
-          block) is never clipped unreachable. */}
-      <aside className="hidden md:flex w-48 min-w-[192px] flex-col gap-4 min-h-0 overflow-y-auto">
+          block) is never clipped unreachable. pointer-events-auto
+          (Adam, 2026-11-11) is the other half of that fix: the HUD
+          root is pointer-events-none, so without it the wheel
+          never reached this column and its scrollbar thumb could
+          not be dragged — the 2026-10-25 scroll was inert until
+          now. The 2026-11-11 astro slimming means the column fits
+          at library heights and the scroll is only a fallback. */}
+      <aside className="hidden md:flex w-48 min-w-[192px] flex-col gap-4 min-h-0 overflow-y-auto pointer-events-auto">
         {uiOptions.astroPanel && (
-        <div className="hud-panel p-4 border-4">
+        <div className="hud-panel p-3 border-4">
           <div className="absolute top-0 right-0 p-1 text-[10px] text-[#2d2d30]">MOD-CR90</div>
-          <h2 className="mb-4 pb-1 font-bold">
+          <h2 className="mb-2 pb-1 font-bold">
             <span className="embossed-label text-orange-400">Astronomic Data</span>
           </h2>
-          <div className="space-y-6">
-            <div>
-              <div className="flex justify-between text-[10px] mb-1">
-                <span>HOME STAR GROWTH</span>
-                <span className="text-orange-400">{growthProgress}/{growthCost} · {totalScrapInfused} INFUSED</span>
-              </div>
-              <div className="vu-meter h-2 bg-orange-950/20">
-                <motion.div 
-                  className="h-full bg-gradient-to-r from-orange-800 to-orange-400 shadow-[0_0_8px_orange]"
-                  animate={{ width: `${(growthProgress / growthCost) * 100}%` }}
-                />
-              </div>
-            </div>
-
+          <div className="space-y-4">
             <div className="border border-zinc-800 rounded p-2 bg-zinc-950/60">
               {myTeamId && (
                 <div className="flex justify-between text-[10px] mb-1">
@@ -1110,16 +1103,27 @@ export const HUD: React.FC<HUDProps> = ({
                   stage (home white-core/orange, enemy pale-rose/
                   dark-rose), so the panel is where a star's color,
                   size, and mass must READ — a swatch, not just a
-                  colored word, plus explicit SIZE and MASS rows.
+                  colored word, plus an explicit SIZE · MASS row.
                   Same rows on both blocks, so the readouts can't
                   drift apart (the stageFieldFor doctrine). */}
+              {/* MILESTONE (folded in, 2026-11-11): the old
+                  standalone HOME STAR GROWTH block became this row
+                  + meter inside the star's own box — its numbers
+                  survive, the duplicate INFUSED reading died (the
+                  TOTAL FED row below is the one reading). */}
               <div className="flex justify-between text-[10px] mb-1">
-                <span className="text-zinc-300">SIZE</span>
-                <span className="text-zinc-200 font-bold">{Math.round(starSize)}U</span>
+                <span className="text-zinc-300">MILESTONE M{starLevel}</span>
+                <span className="text-orange-400 font-bold">{growthProgress}/{growthCost}</span>
+              </div>
+              <div className="vu-meter h-1.5 bg-orange-950/20 mb-1">
+                <motion.div
+                  className="h-full bg-gradient-to-r from-orange-800 to-orange-400 shadow-[0_0_8px_orange]"
+                  animate={{ width: `${(growthProgress / growthCost) * 100}%` }}
+                />
               </div>
               <div className="flex justify-between text-[10px] mb-1">
-                <span className="text-zinc-300">MASS</span>
-                <span className="text-zinc-200 font-bold">{Math.round(starMass)}</span>
+                <span className="text-zinc-300">SIZE · MASS</span>
+                <span className="text-zinc-200 font-bold">{Math.round(starSize)}U · {Math.round(starMass)}</span>
               </div>
               <div className="flex justify-between text-[10px] mb-1">
                 <span className="text-zinc-300">TOTAL FED</span>
@@ -1141,7 +1145,6 @@ export const HUD: React.FC<HUDProps> = ({
                 <span className="text-zinc-300">⭐ STAR FLEET</span>
                 <span className="text-zinc-200 font-bold">{starFleetCount}/{homeFleetTarget} · RANGE {homeFleetRange}U</span>
               </div>
-              <div className="text-[8px] font-mono text-zinc-500 leading-snug">HER OWN HARVESTERS (✦ ON CANVAS) — THEY FEED HER UNATTENDED AND REGROW WHEN LOST. NOT YOUR WORKFORCE.</div>
             </div>
 
             <div>
@@ -1168,16 +1171,10 @@ export const HUD: React.FC<HUDProps> = ({
                 <span className="text-zinc-200 tracking-wider">ENEMY LIFECYCLE</span>
                 <span className="font-bold flex items-center gap-1.5" style={{ color: enemyField.color }}><span className="inline-block w-2.5 h-2.5 rounded-[2px] border border-zinc-600" style={{ backgroundColor: enemyField.color }} />{STAGE_LABELS[enemyField.state.stage]}</span>
               </div>
-              {enemyStarSize !== undefined && (
+              {(enemyStarSize !== undefined || enemyStarMass !== undefined) && (
                 <div className="flex justify-between text-[10px] mb-1">
-                  <span className="text-zinc-300">SIZE</span>
-                  <span className="text-zinc-200 font-bold">{Math.round(enemyStarSize)}U</span>
-                </div>
-              )}
-              {enemyStarMass !== undefined && (
-                <div className="flex justify-between text-[10px] mb-1">
-                  <span className="text-zinc-300">MASS</span>
-                  <span className="text-zinc-200 font-bold">{Math.round(enemyStarMass)}</span>
+                  <span className="text-zinc-300">SIZE · MASS</span>
+                  <span className="text-zinc-200 font-bold">{enemyStarSize !== undefined ? `${Math.round(enemyStarSize)}U` : '—'} · {enemyStarMass !== undefined ? Math.round(enemyStarMass) : '—'}</span>
                 </div>
               )}
               <div className="flex justify-between text-[10px] mb-1">
@@ -1202,10 +1199,10 @@ export const HUD: React.FC<HUDProps> = ({
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 items-center">
-              <div className="text-[10px] uppercase text-zinc-300 self-start">Local Nav Map [Tactical]</div>
-              {renderRadarView()}
-            </div>
+            {/* Local Nav Map moved out (Adam, 2026-11-11) — it
+                lives in its own panel at the play area's top-left
+                now; a glance instrument can't ride at the foot of
+                a growing panel. */}
           </div>
         </div>
         )}
@@ -1258,6 +1255,21 @@ export const HUD: React.FC<HUDProps> = ({
       {/* DESKTOP MAIN CENTER AREA */}
       <main className="hidden md:flex flex-grow flex-col gap-4 relative">
         <div className="flex-grow pointer-events-none relative">
+          {/* LOCAL NAV MAP — its own HUD (Adam, 2026-11-11):
+              the tactical map used to ride at the foot of the
+              Astronomic Data panel, where a month of panel growth
+              buried it offscreen at library heights. It is a
+              glance instrument, so it gets its own panel at the
+              play area's top-left, beside the aside, at its full
+              200px — nothing can grow above it here. Pure readout:
+              pointer-events-none, clicks pass to the field. */}
+          <div className="absolute top-0 left-0 pointer-events-none">
+            <div className="hud-panel p-2 border-2 shadow-2xl">
+              <div className="text-[10px] uppercase text-zinc-300 mb-1.5">Local Nav Map [Tactical]</div>
+              {renderRadarView()}
+            </div>
+          </div>
+
           {/* CONTROLS CARD — bottom-left of the play area (desktop).
               Replaces the stale 20%-opacity help footer that lived in
               App.tsx and never learned FIRE [F] or DECOY [X]. */}
